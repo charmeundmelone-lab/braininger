@@ -70,7 +70,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.rememberCoroutineScope
 import de.braininger.app.drive.AnmeldungNoetig
 import de.braininger.app.drive.Auftraege
-import de.braininger.app.drive.DriveTest
 import de.braininger.app.drive.Ergebnis
 import de.braininger.app.drive.ErgebnisAbruf
 import de.braininger.app.drive.ErgebnisAuftrag
@@ -124,7 +123,6 @@ private fun Startseite(aktualisierung: Int) {
     var googleFehlt by remember { mutableStateOf(false) }
     var uploads by remember { mutableStateOf(emptyMap<String, UploadStand>()) }
     var testText by remember { mutableStateOf<String?>(null) }
-    var beschaeftigt by remember { mutableStateOf(false) }
     var ergebnisse by remember { mutableStateOf(emptyMap<String, Ergebnis?>()) }
     var offen by remember { mutableStateOf<String?>(null) }
     var zeigeUebersicht by remember { mutableStateOf(false) }
@@ -168,22 +166,6 @@ private fun Startseite(aktualisierung: Int) {
             } catch (e: Exception) {
                 testText = "Google-Anmeldung fehlgeschlagen: ${e.message}"
             }
-        }
-    }
-
-    fun fruehtest(schritt: suspend () -> String) {
-        if (beschaeftigt) return
-        beschaeftigt = true
-        testText = "Läuft …"
-        scope.launch {
-            testText = try {
-                schritt()
-            } catch (e: AnmeldungNoetig) {
-                "Erst bei Google anmelden."
-            } catch (e: Exception) {
-                "Fehler: ${e.message}"
-            }
-            beschaeftigt = false
         }
     }
 
@@ -285,11 +267,6 @@ private fun Startseite(aktualisierung: Int) {
             Hinweis("Für den Upload ins Google Drive einmal bei Google anmelden.", "ANMELDEN") { anmelden() }
         }
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("FRÜHTEST DRIVE", fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Grau, modifier = Modifier.weight(1f))
-            TextButton(onClick = { fruehtest { DriveTest.vorbereiten(context) } }, enabled = !beschaeftigt) { Text("1 VORBEREITEN", color = Weiss) }
-            TextButton(onClick = { fruehtest { DriveTest.pruefen(context) } }, enabled = !beschaeftigt) { Text("2 PRÜFEN", color = Weiss) }
-        }
         testText?.let {
             Text(
                 it, color = Grau, fontSize = 12.sp,
