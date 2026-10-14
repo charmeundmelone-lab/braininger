@@ -70,6 +70,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.rememberCoroutineScope
 import de.braininger.app.drive.AnmeldungNoetig
 import de.braininger.app.drive.Auftraege
+import de.braininger.app.drive.AudioAufraeumen
 import de.braininger.app.drive.Ergebnis
 import de.braininger.app.drive.ErgebnisAbruf
 import de.braininger.app.drive.ErgebnisAuftrag
@@ -183,6 +184,7 @@ private fun Startseite(aktualisierung: Int) {
         scope.launch {
             try {
                 ErgebnisAbruf.abrufen(context)
+                AudioAufraeumen.aufraeumen(context)
             } catch (_: Exception) {
                 // kein Netz oder nicht angemeldet: beim nächsten Mal wieder
             }

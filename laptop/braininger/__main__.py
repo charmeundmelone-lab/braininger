@@ -27,10 +27,11 @@ def protokoll_einrichten() -> None:
     form = logging.Formatter("%(asctime)s %(levelname)-7s %(message)s", "%Y-%m-%d %H:%M:%S")
     datei = logging.FileHandler(E.PROTOKOLL, encoding="utf-8")
     datei.setFormatter(form)
-    konsole = logging.StreamHandler(sys.stdout)
-    konsole.setFormatter(form)
     log.addHandler(datei)
-    log.addHandler(konsole)
+    if sys.stdout is not None:  # beim Autostart ohne Fenster (pythonw) gibt es keine Konsole
+        konsole = logging.StreamHandler(sys.stdout)
+        konsole.setFormatter(form)
+        log.addHandler(konsole)
     log.setLevel(logging.INFO)
 
 

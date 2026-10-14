@@ -203,8 +203,9 @@ object ErgebnisAbruf {
 }
 
 /**
- * Löscht die Audio-Stücke einer Aufnahme im Drive, frühestens 3 Tage nach ihrem Ende und nur, wenn der Laptop
- * gemeldet hat, dass der Text gesichert ist (text_fertig). Die Kopie auf dem Handy bleibt (noch) erhalten.
+ * Löscht die Audio-Stücke einer Aufnahme im Drive und auf dem Handy, frühestens 3 Tage nach ihrem Ende und nur,
+ * wenn der Laptop gemeldet hat, dass der Text gesichert ist (text_fertig). info.json und ergebnis.json bleiben,
+ * damit Notizen und Text in der App sichtbar bleiben.
  */
 object AudioAufraeumen {
     private const val FRIST_MS = 3 * 24 * 3_600_000L
@@ -221,6 +222,7 @@ object AudioAufraeumen {
             for (id in stand.dateien.values) api.loeschen(id)
             stand.audioGeloescht = true
             stand.speichern(a.ordner)
+            a.ordner.listFiles { f -> f.name.endsWith(".m4a") }.orEmpty().forEach { it.delete() }
         }
     }
 }
