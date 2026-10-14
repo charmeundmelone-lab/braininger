@@ -26,6 +26,8 @@ data class UploadStand(
     var ordnerId: String? = null,
     val dateien: MutableMap<String, String> = mutableMapOf(),
     var infoId: String? = null,
+    var ergebnisId: String? = null,
+    var auftragId: String? = null,
     var abgeschlossen: Boolean = false,
 ) {
     companion object {
@@ -36,6 +38,8 @@ data class UploadStand(
                 ordnerId = j.optString("ordner_id").ifBlank { null },
                 dateien = d.keys().asSequence().associateWith { d.getString(it) }.toMutableMap(),
                 infoId = j.optString("info_id").ifBlank { null },
+                ergebnisId = j.optString("ergebnis_id").ifBlank { null },
+                auftragId = j.optString("auftrag_id").ifBlank { null },
                 abgeschlossen = j.optBoolean("abgeschlossen"),
             )
         } catch (_: Exception) {
@@ -48,6 +52,8 @@ data class UploadStand(
             .put("ordner_id", ordnerId ?: "")
             .put("dateien", JSONObject(dateien as Map<*, *>))
             .put("info_id", infoId ?: "")
+            .put("ergebnis_id", ergebnisId ?: "")
+            .put("auftrag_id", auftragId ?: "")
             .put("abgeschlossen", abgeschlossen)
         val tmp = File(ordner, "upload.json.tmp")
         tmp.writeText(j.toString(2))
@@ -67,6 +73,7 @@ class HochladenAuftrag(context: Context, params: WorkerParameters) : CoroutineWo
         private const val ID_HINWEIS = 3
         private const val VORLIEBEN = "drive"
         private const val ANMELDUNG_FEHLT = "anmeldung_fehlt"
+        private const val ERGEBNIS_VORLAGE = "{\"version\": 1, \"status\": \"hochgeladen\"}\n"
 
         fun anstossen(context: Context) {
             val auftrag = OneTimeWorkRequestBuilder<HochladenAuftrag>()
@@ -109,6 +116,14 @@ class HochladenAuftrag(context: Context, params: WorkerParameters) : CoroutineWo
                     val id = api.dateiFinden(name, ordnerId)?.id
                         ?: api.hochladen(name, ordnerId, "audio/mp4", datei.readBytes())
                     stand.dateien[name] = id
+                    stand.speichern(a.ordner)
+                }
+
+                // ergebnis.json vorab anlegen: Der Laptop überschreibt sie an Ort und Stelle. Nur so kann
+                // die App sie später lesen (drive.file sieht nur selbst angelegte Dateien, Frühtest a).
+                if (stand.ergebnisId == null) {
+                    stand.ergebnisId = api.dateiFinden("ergebnis.json", ordnerId)?.id
+                        ?: api.hochladen("ergebnis.json", ordnerId, "application/json", ERGEBNIS_VORLAGE.toByteArray())
                     stand.speichern(a.ordner)
                 }
 

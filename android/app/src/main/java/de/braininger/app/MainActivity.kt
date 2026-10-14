@@ -70,6 +70,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.rememberCoroutineScope
 import de.braininger.app.drive.AnmeldungNoetig
 import de.braininger.app.drive.DriveTest
+import de.braininger.app.drive.Ergebnis
+import de.braininger.app.drive.ErgebnisAbruf
+import de.braininger.app.drive.ErgebnisAuftrag
+import androidx.compose.foundation.clickable
 import de.braininger.app.drive.GoogleKonto
 import de.braininger.app.drive.HochladenAuftrag
 import de.braininger.app.drive.UploadStand
@@ -95,6 +99,7 @@ class MainActivity : ComponentActivity() {
         Ablage.unterbrocheneAbschliessen(this)
         BrainingerWidget.aktualisieren(this)
         HochladenAuftrag.anstossen(this)
+        ErgebnisAuftrag.planen(this)
         aktualisierung++
     }
 }
@@ -119,6 +124,9 @@ private fun Startseite(aktualisierung: Int) {
     var uploads by remember { mutableStateOf(emptyMap<String, UploadStand>()) }
     var testText by remember { mutableStateOf<String?>(null) }
     var beschaeftigt by remember { mutableStateOf(false) }
+    var ergebnisse by remember { mutableStateOf(emptyMap<String, Ergebnis?>()) }
+    var offen by remember { mutableStateOf<String?>(null) }
+    var abrufZaehler by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
 
     fun pruefen() {
@@ -127,6 +135,7 @@ private fun Startseite(aktualisierung: Int) {
         akkuFrei = context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
         aufnahmen = Ablage.alle(context)
         uploads = aufnahmen.associate { it.ordner.name to UploadStand.lesen(it.ordner) }
+        ergebnisse = aufnahmen.associate { it.ordner.name to Ergebnis.lesen(it.ordner) }
         googleFehlt = HochladenAuftrag.anmeldungFehlt(context)
     }
 
@@ -186,10 +195,29 @@ private fun Startseite(aktualisierung: Int) {
             .filter { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
         if (fehlend.isNotEmpty()) erlaubnisAnfrage.launch(fehlend.toTypedArray())
     }
+    fun ergebnisseHolen() {
+        scope.launch {
+            try {
+                ErgebnisAbruf.abrufen(context)
+            } catch (_: Exception) {
+                // kein Netz oder nicht angemeldet: beim nächsten Mal wieder
+            }
+            pruefen()
+        }
+    }
+
     LaunchedEffect(Unit) {
+        ergebnisseHolen()
         while (true) {
             delay(5000)
             pruefen()
+            // Solange etwas am Laptop in Arbeit ist, alle 30 Sekunden nachsehen
+            abrufZaehler++
+            val wartend = aufnahmen.any { a ->
+                uploads[a.ordner.name]?.let { it.abgeschlossen && it.ergebnisId != null } == true &&
+                    ergebnisse[a.ordner.name]?.endgueltig != true
+            }
+            if (wartend && abrufZaehler % 6 == 0) ergebnisseHolen()
         }
     }
     LaunchedEffect(zustand.laeuft) {
@@ -197,6 +225,14 @@ private fun Startseite(aktualisierung: Int) {
             jetzt = System.currentTimeMillis()
             delay(500)
         }
+    }
+
+    val offeneAufnahme = offen?.let { name -> aufnahmen.firstOrNull { it.ordner.name == name } }
+    if (offeneAufnahme != null) {
+        ErgebnisSeite(offeneAufnahme, ergebnisse[offeneAufnahme.ordner.name], aktualisierung + abrufZaehler) {
+            offen = null
+        }
+        return
     }
 
     Column(
@@ -262,7 +298,10 @@ private fun Startseite(aktualisierung: Int) {
         }
         LazyColumn(Modifier.weight(1f)) {
             items(aufnahmen, key = { it.ordner.name }) { a ->
-                AufnahmeZeile(a, uploads[a.ordner.name])
+                AufnahmeZeile(a, uploads[a.ordner.name], ergebnisse[a.ordner.name]) {
+                    offen = a.ordner.name
+                    ergebnisseHolen()
+                }
                 HorizontalDivider(color = Linie)
             }
         }
@@ -361,9 +400,10 @@ private fun Hinweis(text: String, knopf: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun AufnahmeZeile(a: Aufnahme, upload: UploadStand?) {
+private fun AufnahmeZeile(a: Aufnahme, upload: UploadStand?, ergebnis: Ergebnis?, oeffnen: () -> Unit) {
     val datum = remember(a.start) { SimpleDateFormat("EE dd.MM. HH:mm", Locale.GERMANY).format(Date(a.start)) }
     val statusText = when {
+        ergebnis != null && upload?.abgeschlossen == true -> ergebnis.anzeige
         upload?.abgeschlossen == true -> "im Drive"
         upload != null && upload.dateien.isNotEmpty() -> "lädt hoch ${upload.dateien.size}/${a.stuecke}"
         else -> null
@@ -373,14 +413,23 @@ private fun AufnahmeZeile(a: Aufnahme, upload: UploadStand?) {
         "unterbrochen" -> "unterbrochen"
         else -> a.status
     }
-    Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = oeffnen).padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         Column(Modifier.weight(1f)) {
             Text("${a.modus.anzeige} · $datum", color = Weiss, fontSize = 15.sp)
             Text(
-                "${dauerText(a.dauerMs)} · ${a.stuecke} Stücke · ${a.mikrofon}",
-                color = Grau, fontSize = 12.sp,
+                ergebnis?.kurz ?: "${dauerText(a.dauerMs)} · ${a.stuecke} Stücke · ${a.mikrofon}",
+                color = Grau, fontSize = 12.sp, maxLines = 2,
             )
         }
-        Text(statusText, color = if (a.status == "unterbrochen") Rot else Grau, fontSize = 12.sp)
+        Spacer(Modifier.width(8.dp))
+        Text(
+            statusText,
+            color = if (a.status == "unterbrochen" || ergebnis?.status == "fehler") Rot
+                    else if (ergebnis?.status == "fertig") Weiss else Grau,
+            fontSize = 12.sp,
+        )
     }
 }
