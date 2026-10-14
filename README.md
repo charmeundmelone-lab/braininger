@@ -9,3 +9,7 @@ Gebaut mit Claude Code. In diesem Projekt liegen nur Programmcode und Vorlagen, 
 
 ## Stand
 Stufe 1 im Aufbau.
+
+## Rechtliches
+- [Datenschutzerklärung](docs/datenschutz.md)
+- [Nutzungsbedingungen](docs/nutzungsbedingungen.md)
