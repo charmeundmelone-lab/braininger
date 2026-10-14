@@ -1,0 +1,38 @@
+# Privates bleibt draußen: Aufnahmen, Texte, Ergebnisse, Wörterbuch, Schlüssel
+*.m4a
+*.ogg
+*.wav
+*.mp3
+*.opus
+*.aac
+aufnahmen/
+ergebnisse/
+daten/
+woerterbuch*.json
+woerterbuch*.txt
+*.keystore
+*.jks
+*.p12
+.env
+*.token
+credentials*.json
+client_secret*.json
+
+# Modelle (groß, werden heruntergeladen)
+models/
+*.onnx
+*.bin
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+*.apk
+*.aab
