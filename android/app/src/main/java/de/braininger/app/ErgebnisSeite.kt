@@ -194,7 +194,7 @@ private fun NotizKarte(n: Notiz, aenderbar: Boolean, vorlageAendern: () -> Unit)
 
 /** Sehr einfache Markdown-Darstellung: Überschriften, Listen, Checkboxen, **fett**. */
 @Composable
-private fun Markdown(text: String) {
+internal fun Markdown(text: String) {
     for (roh in text.lines()) {
         val zeile = roh.trimEnd()
         when {

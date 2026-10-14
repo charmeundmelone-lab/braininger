@@ -217,6 +217,7 @@ class ErgebnisAuftrag(context: Context, params: WorkerParameters) : CoroutineWor
 
     override suspend fun doWork(): Result = try {
         ErgebnisAbruf.benachrichtigen(applicationContext, ErgebnisAbruf.abrufen(applicationContext))
+        Uebersichten.abrufen(applicationContext)
         Result.success()
     } catch (_: AnmeldungNoetig) {
         Result.success() // Anmeldung meldet schon der Upload

@@ -15,6 +15,7 @@ from pathlib import Path
 
 from . import aufnahme as aufnahme_modul
 from . import einstellungen as E
+from . import tagesuebersicht
 from .claude_aufruf import schluessel_vorhanden
 from .verarbeitung import Bearbeitung, drive_nachtragen
 
@@ -93,6 +94,10 @@ def durchgang() -> int:
         log.info("%s: Bearbeitung startet (Modus %s, %d Stücke, Status %s)", a.id, a.modus, len(a.stuecke), a.status)
         b.ausfuehren()
         anzahl += 1
+    try:
+        tagesuebersicht.pruefen()
+    except Exception:
+        log.exception("Tagesübersicht: unerwarteter Fehler")
     return anzahl
 
 

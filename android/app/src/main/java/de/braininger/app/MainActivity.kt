@@ -127,6 +127,7 @@ private fun Startseite(aktualisierung: Int) {
     var beschaeftigt by remember { mutableStateOf(false) }
     var ergebnisse by remember { mutableStateOf(emptyMap<String, Ergebnis?>()) }
     var offen by remember { mutableStateOf<String?>(null) }
+    var zeigeUebersicht by remember { mutableStateOf(false) }
     var abrufZaehler by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
 
@@ -228,6 +229,10 @@ private fun Startseite(aktualisierung: Int) {
         }
     }
 
+    if (zeigeUebersicht) {
+        UebersichtSeite { zeigeUebersicht = false }
+        return
+    }
     val offeneAufnahme = offen?.let { name -> aufnahmen.firstOrNull { it.ordner.name == name } }
     if (offeneAufnahme != null) {
         ErgebnisSeite(offeneAufnahme, ergebnisse[offeneAufnahme.ordner.name], aktualisierung + abrufZaehler) {
@@ -290,6 +295,19 @@ private fun Startseite(aktualisierung: Int) {
                 it, color = Grau, fontSize = 12.sp,
                 modifier = Modifier.heightIn(max = 140.dp).verticalScroll(rememberScrollState()).padding(bottom = 12.dp),
             )
+        }
+
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(bottom = 16.dp)
+                .border(1.dp, Linie, RoundedCornerShape(16.dp))
+                .clickable { zeigeUebersicht = true }
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("TAGESÜBERSICHT", fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Weiss, modifier = Modifier.weight(1f))
+            Text("›", color = Weiss, fontSize = 22.sp)
         }
 
         Text("AUFNAHMEN", fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Grau)

@@ -109,6 +109,8 @@ class HochladenAuftrag(context: Context, params: WorkerParameters) : CoroutineWo
                     stand.ordnerId = it
                     stand.speichern(a.ordner)
                 }
+                // Platz für die Tagesübersicht dieses Tages vorab anlegen (Name beginnt mit JJJJ-MM-TT)
+                Uebersichten.tagSichern(ctx, api, a.ordner.name.take(10))
 
                 for (name in offen) {
                     val datei = File(a.ordner, name)
