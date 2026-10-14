@@ -18,6 +18,7 @@ import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import de.braininger.app.drive.HochladenAuftrag
 import java.io.File
 
 /**
@@ -133,6 +134,7 @@ class AufnahmeDienst : Service() {
         stuecke += datei.name
         AufnahmeStatus.aendern { it.copy(stueckeFertig = stuecke.size) }
         infoSchreiben(ende = null, status = if (recorder != null) "laeuft" else "fertig")
+        HochladenAuftrag.anstossen(this)
     }
 
     private fun mikrofonPruefen() {
@@ -173,6 +175,7 @@ class AufnahmeDienst : Service() {
             r.stopp()
             haupt.post {
                 infoSchreiben(ende = System.currentTimeMillis(), status = "fertig")
+                HochladenAuftrag.anstossen(this)
                 weckSperre?.let { if (it.isHeld) it.release() }
                 weckSperre = null
                 AufnahmeStatus.setzen(AufnahmeZustand(laeuft = false))

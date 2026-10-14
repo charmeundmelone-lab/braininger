@@ -88,6 +88,12 @@ object Ablage {
         }
     }
 
+    fun infoLesen(ordner: File): JSONObject? = try {
+        JSONObject(File(ordner, "info.json").readText())
+    } catch (_: Exception) {
+        null
+    }
+
     private fun lesen(ordner: File): Aufnahme? = try {
         val j = JSONObject(File(ordner, "info.json").readText())
         Aufnahme(

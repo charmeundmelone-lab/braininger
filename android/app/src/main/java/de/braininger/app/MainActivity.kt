@@ -63,7 +63,18 @@ import de.braininger.app.ui.Punktschrift
 import de.braininger.app.ui.Rot
 import de.braininger.app.ui.Schwarz
 import de.braininger.app.ui.Weiss
+import androidx.activity.result.IntentSenderRequest
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.rememberCoroutineScope
+import de.braininger.app.drive.AnmeldungNoetig
+import de.braininger.app.drive.DriveTest
+import de.braininger.app.drive.GoogleKonto
+import de.braininger.app.drive.HochladenAuftrag
+import de.braininger.app.drive.UploadStand
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -83,6 +94,7 @@ class MainActivity : ComponentActivity() {
         super.onResume()
         Ablage.unterbrocheneAbschliessen(this)
         BrainingerWidget.aktualisieren(this)
+        HochladenAuftrag.anstossen(this)
         aktualisierung++
     }
 }
@@ -103,12 +115,65 @@ private fun Startseite(aktualisierung: Int) {
     var fragZustimmung by remember { mutableStateOf(false) }
     var aufnahmen by remember { mutableStateOf(emptyList<Aufnahme>()) }
     var jetzt by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var googleFehlt by remember { mutableStateOf(false) }
+    var uploads by remember { mutableStateOf(emptyMap<String, UploadStand>()) }
+    var testText by remember { mutableStateOf<String?>(null) }
+    var beschaeftigt by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     fun pruefen() {
         mikroErlaubt = context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         hinweiseErlaubt = context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         akkuFrei = context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
         aufnahmen = Ablage.alle(context)
+        uploads = aufnahmen.associate { it.ordner.name to UploadStand.lesen(it.ordner) }
+        googleFehlt = HochladenAuftrag.anmeldungFehlt(context)
+    }
+
+    fun angemeldet() {
+        HochladenAuftrag.anmeldungFehltSetzen(context, false)
+        HochladenAuftrag.anstossen(context)
+        pruefen()
+    }
+
+    val googleFenster = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { ergebnis ->
+        try {
+            GoogleKonto.auswerten(GoogleKonto.ergebnisAusIntent(context, ergebnis.data))
+            angemeldet()
+        } catch (e: Exception) {
+            testText = "Google-Anmeldung nicht abgeschlossen: ${e.message}"
+        }
+    }
+
+    fun anmelden() {
+        scope.launch {
+            try {
+                GoogleKonto.zugang(context)
+                angemeldet()
+            } catch (e: AnmeldungNoetig) {
+                googleFenster.launch(IntentSenderRequest.Builder(e.pendingIntent.intentSender).build())
+            } catch (e: Exception) {
+                testText = "Google-Anmeldung fehlgeschlagen: ${e.message}"
+            }
+        }
+    }
+
+    fun fruehtest(schritt: suspend () -> String) {
+        if (beschaeftigt) return
+        beschaeftigt = true
+        testText = "Läuft …"
+        scope.launch {
+            testText = try {
+                schritt()
+            } catch (e: AnmeldungNoetig) {
+                "Erst bei Google anmelden."
+            } catch (e: Exception) {
+                "Fehler: ${e.message}"
+            }
+            beschaeftigt = false
+        }
     }
 
     val erlaubnisAnfrage = rememberLauncherForActivityResult(
@@ -120,6 +185,12 @@ private fun Startseite(aktualisierung: Int) {
         val fehlend = listOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS)
             .filter { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
         if (fehlend.isNotEmpty()) erlaubnisAnfrage.launch(fehlend.toTypedArray())
+    }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(5000)
+            pruefen()
+        }
     }
     LaunchedEffect(zustand.laeuft) {
         while (zustand.laeuft) {
@@ -168,6 +239,22 @@ private fun Startseite(aktualisierung: Int) {
             }
         }
 
+        if (googleFehlt) {
+            Hinweis("Für den Upload ins Google Drive einmal bei Google anmelden.", "ANMELDEN") { anmelden() }
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("FRÜHTEST DRIVE", fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Grau, modifier = Modifier.weight(1f))
+            TextButton(onClick = { fruehtest { DriveTest.vorbereiten(context) } }, enabled = !beschaeftigt) { Text("1 VORBEREITEN", color = Weiss) }
+            TextButton(onClick = { fruehtest { DriveTest.pruefen(context) } }, enabled = !beschaeftigt) { Text("2 PRÜFEN", color = Weiss) }
+        }
+        testText?.let {
+            Text(
+                it, color = Grau, fontSize = 12.sp,
+                modifier = Modifier.heightIn(max = 140.dp).verticalScroll(rememberScrollState()).padding(bottom = 12.dp),
+            )
+        }
+
         Text("AUFNAHMEN", fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Grau)
         Spacer(Modifier.height(8.dp))
         if (aufnahmen.isEmpty()) {
@@ -175,7 +262,7 @@ private fun Startseite(aktualisierung: Int) {
         }
         LazyColumn(Modifier.weight(1f)) {
             items(aufnahmen, key = { it.ordner.name }) { a ->
-                AufnahmeZeile(a)
+                AufnahmeZeile(a, uploads[a.ordner.name])
                 HorizontalDivider(color = Linie)
             }
         }
@@ -274,9 +361,13 @@ private fun Hinweis(text: String, knopf: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun AufnahmeZeile(a: Aufnahme) {
+private fun AufnahmeZeile(a: Aufnahme, upload: UploadStand?) {
     val datum = remember(a.start) { SimpleDateFormat("EE dd.MM. HH:mm", Locale.GERMANY).format(Date(a.start)) }
-    val statusText = when (a.status) {
+    val statusText = when {
+        upload?.abgeschlossen == true -> "im Drive"
+        upload != null && upload.dateien.isNotEmpty() -> "lädt hoch ${upload.dateien.size}/${a.stuecke}"
+        else -> null
+    } ?: when (a.status) {
         "laeuft" -> "läuft"
         "fertig" -> "auf dem Handy"
         "unterbrochen" -> "unterbrochen"
