@@ -422,7 +422,9 @@ private fun Hinweis(text: String, knopf: String, onClick: () -> Unit) {
 private fun AufnahmeZeile(a: Aufnahme, upload: UploadStand?, ergebnis: Ergebnis?, oeffnen: () -> Unit) {
     val datum = remember(a.start) { SimpleDateFormat("EE dd.MM. HH:mm", Locale.GERMANY).format(Date(a.start)) }
     val statusText = when {
-        ergebnis != null && upload?.abgeschlossen == true -> ergebnis.anzeige
+        ergebnis != null && upload?.abgeschlossen == true ->
+            ergebnis.anzeige + if (upload.audioGeloescht) "
+Audio gelöscht" else ""
         upload?.abgeschlossen == true -> "im Drive"
         upload != null && upload.dateien.isNotEmpty() -> "lädt hoch ${upload.dateien.size}/${a.stuecke}"
         else -> null

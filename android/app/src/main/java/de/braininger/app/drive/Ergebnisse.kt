@@ -202,6 +202,29 @@ object ErgebnisAbruf {
     }
 }
 
+/**
+ * Löscht die Audio-Stücke einer Aufnahme im Drive, frühestens 3 Tage nach ihrem Ende und nur, wenn der Laptop
+ * gemeldet hat, dass der Text gesichert ist (text_fertig). Die Kopie auf dem Handy bleibt (noch) erhalten.
+ */
+object AudioAufraeumen {
+    private const val FRIST_MS = 3 * 24 * 3_600_000L
+
+    suspend fun aufraeumen(context: Context) {
+        val api = DriveApi(context)
+        val jetzt = System.currentTimeMillis()
+        for (a in Ablage.alle(context)) {
+            val ende = a.ende ?: continue
+            if (jetzt - ende < FRIST_MS) continue
+            val stand = UploadStand.lesen(a.ordner)
+            if (!stand.abgeschlossen || stand.audioGeloescht || stand.dateien.isEmpty()) continue
+            if (Ergebnis.lesen(a.ordner)?.textFertig != true) continue
+            for (id in stand.dateien.values) api.loeschen(id)
+            stand.audioGeloescht = true
+            stand.speichern(a.ordner)
+        }
+    }
+}
+
 /** Schaut alle 15 Minuten (kürzer erlaubt Android nicht) nach neuen Ergebnissen, auch wenn die App zu ist. */
 class ErgebnisAuftrag(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     companion object {
@@ -218,6 +241,7 @@ class ErgebnisAuftrag(context: Context, params: WorkerParameters) : CoroutineWor
     override suspend fun doWork(): Result = try {
         ErgebnisAbruf.benachrichtigen(applicationContext, ErgebnisAbruf.abrufen(applicationContext))
         Uebersichten.abrufen(applicationContext)
+        AudioAufraeumen.aufraeumen(applicationContext)
         Result.success()
     } catch (_: AnmeldungNoetig) {
         Result.success() // Anmeldung meldet schon der Upload

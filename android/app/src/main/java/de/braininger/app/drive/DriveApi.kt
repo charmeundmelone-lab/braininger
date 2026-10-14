@@ -130,6 +130,16 @@ class DriveApi(private val context: Context) {
         Unit
     }
 
+    /** Löscht eine Datei endgültig (ohne Papierkorb). Nur für Dateien, die Braininger selbst angelegt hat. */
+    suspend fun loeschen(id: String): Unit = mitZugang { s ->
+        try {
+            antwort(verbinden("$API/${enc(id)}", "DELETE", s))
+        } catch (e: DriveFehler) {
+            if (e.code != 404) throw e // schon weg: auch gut
+        }
+        Unit
+    }
+
     suspend fun herunterladen(id: String): ByteArray = mitZugang { s ->
         antwort(verbinden("$API/${enc(id)}?alt=media", "GET", s))
     }

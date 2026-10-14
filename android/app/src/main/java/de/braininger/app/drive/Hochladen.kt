@@ -28,6 +28,7 @@ data class UploadStand(
     var infoId: String? = null,
     var ergebnisId: String? = null,
     var auftragId: String? = null,
+    var audioGeloescht: Boolean = false,
     var abgeschlossen: Boolean = false,
 ) {
     companion object {
@@ -40,6 +41,7 @@ data class UploadStand(
                 infoId = j.optString("info_id").ifBlank { null },
                 ergebnisId = j.optString("ergebnis_id").ifBlank { null },
                 auftragId = j.optString("auftrag_id").ifBlank { null },
+                audioGeloescht = j.optBoolean("audio_geloescht"),
                 abgeschlossen = j.optBoolean("abgeschlossen"),
             )
         } catch (_: Exception) {
@@ -54,6 +56,7 @@ data class UploadStand(
             .put("info_id", infoId ?: "")
             .put("ergebnis_id", ergebnisId ?: "")
             .put("auftrag_id", auftragId ?: "")
+            .put("audio_geloescht", audioGeloescht)
             .put("abgeschlossen", abgeschlossen)
         val tmp = File(ordner, "upload.json.tmp")
         tmp.writeText(j.toString(2))
