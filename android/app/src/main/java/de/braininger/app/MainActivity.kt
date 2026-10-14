@@ -69,6 +69,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.rememberCoroutineScope
 import de.braininger.app.drive.AnmeldungNoetig
+import de.braininger.app.drive.Auftraege
 import de.braininger.app.drive.DriveTest
 import de.braininger.app.drive.Ergebnis
 import de.braininger.app.drive.ErgebnisAbruf
@@ -215,7 +216,7 @@ private fun Startseite(aktualisierung: Int) {
             abrufZaehler++
             val wartend = aufnahmen.any { a ->
                 uploads[a.ordner.name]?.let { it.abgeschlossen && it.ergebnisId != null } == true &&
-                    ergebnisse[a.ordner.name]?.endgueltig != true
+                    (ergebnisse[a.ordner.name]?.endgueltig != true || Auftraege.offen(a.ordner) != null)
             }
             if (wartend && abrufZaehler % 6 == 0) ergebnisseHolen()
         }
