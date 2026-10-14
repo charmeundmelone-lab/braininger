@@ -36,3 +36,7 @@ android/local.properties
 android/.idea/
 *.apk
 *.aab
+
+# Wird beim Bauen geladen (Schrift Doto, SIL OFL)
+android/app/src/main/res/font/doto.ttf
+android/app/src/main/assets/lizenzen/

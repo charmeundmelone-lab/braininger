@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Braininger</string>
+    <string name="knopf_gedanke">GEDANKE</string>
+    <string name="knopf_gespraech">GESPRÄCH</string>
+    <string name="knopf_stopp">STOPP</string>
+    <string name="widget_beschreibung">Aufnahme mit einem Tipp starten</string>
+    <string name="kanal_aufnahme">Laufende Aufnahme</string>
+    <string name="kanal_hinweise">Hinweise</string>
+    <string name="zustimmung_titel">Gespräch aufnehmen</string>
+    <string name="zustimmung_text">Sind alle Anwesenden mit der Aufnahme einverstanden?</string>
+    <string name="zustimmung_ja">Ja, aufnehmen</string>
+    <string name="zustimmung_nein">Abbrechen</string>
+</resources>
