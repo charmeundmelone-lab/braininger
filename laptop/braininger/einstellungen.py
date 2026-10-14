@@ -28,6 +28,7 @@ WHISPER_BEAM = 1
 SPRECHER_SCHWELLE = 0.9  # 0,9–0,95 lag richtig, 0,5 fand 4 Sprecher bei einer Stimme
 
 ABTASTRATE = 16000
+PAUSE_AB_S = 30  # längere Stille: Aufnahme dort teilen und im Text als [Pause …] markieren
 PRUEFABSTAND_S = 30  # wie oft der Eingang angeschaut wird
 SYNC_GEDULD_S = 30 * 60  # so lange auf fehlende Stücke warten, bevor ohne sie gearbeitet wird
 WARNGRENZE_FREI_GB = 10
