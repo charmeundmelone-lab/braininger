@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import auswertung, ergebnis, notizdateien, stimmen
+from . import auswertung, ergebnis, notizdateien, stimmen, woerterbuch
 from .aufnahme import Aufnahme, zusammenfuegen
 from .claude_aufruf import ClaudeFehler, ClaudeLimitErreicht
 from .einstellungen import AUFNAHMEN_LOKAL
@@ -244,6 +244,8 @@ class Bearbeitung:
         eintrag.update(name=name or None, quelle="bestaetigt" if name else "leer", aehnlichkeit=None)
         if name and text.stimmen and text.stimmen.get(kennung):
             stimmen.lernen(name, text.stimmen[kennung])
+        if name:
+            woerterbuch.hinzufuegen(name)
         log.info("%s: Auftrag %d, %s heißt %s", self.a.id, nummer, kennung, name or "(kein Name)")
 
         self.daten.update(status="in_arbeit", schritt="auswertung", fortschritt=0.0)

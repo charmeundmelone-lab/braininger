@@ -1,7 +1,7 @@
 """Text → Notiz(en): Claude wählt die Vorlage(n) und schreibt die Notizen."""
 import json
 
-from . import claude_aufruf
+from . import claude_aufruf, woerterbuch
 from .einstellungen import CLAUDE_ARBEITSORDNER, PERSOENLICH
 from .texterkennung import Text
 from .vorlagen import KENNUNGEN, NACH_KENNUNG, VORLAGEN
@@ -105,6 +105,14 @@ def eigener_name() -> str:
         return "ich"
 
 
+def _woerterbuch_text() -> str:
+    b = woerterbuch.begriffe()
+    if not b:
+        return ""
+    return ("\n\n# Wörterbuch\n\nSo werden diese Namen und Begriffe geschrieben. Klingt etwas im Text ähnlich "
+            "und passt der Zusammenhang, ist dieser Begriff gemeint:\n" + ", ".join(b))
+
+
 def prompt_bauen(text: Text, modus: str, start: str, dauer_s: float, hinweise: list[str],
                  namen: dict[str, str] | None = None) -> str:
     """namen: {"S1": "Jan"} – im Text werden die Kennungen durch die Namen ersetzt."""
@@ -119,7 +127,7 @@ def prompt_bauen(text: Text, modus: str, start: str, dauer_s: float, hinweise: l
     if hinweise:
         kopf.append("Hinweise: " + " ".join(hinweise))
     return (
-        "# Vorlagen\n\n" + _vorlagen_text()
+        "# Vorlagen\n\n" + _vorlagen_text() + _woerterbuch_text()
         + "\n\n# Aufnahme\n\n" + "\n".join(kopf)
         + "\n\n# Text\n\n" + (text.als_zeilen(namen) or "(kein Text erkannt)")
         + "\n\nSchreib jetzt die Notiz(en)."
@@ -160,7 +168,7 @@ def vorlage_aendern(text: Text, modus: str, start: str, notiz: dict, vorlage: st
         "additionalProperties": False,
     }
     prompt = (
-        "# Vorlagen\n\n" + _vorlagen_text()
+        "# Vorlagen\n\n" + _vorlagen_text() + _woerterbuch_text()
         + f"\n\n# Aufgabe\n\nDer Nutzer hat in der App festgelegt: Diese Notiz soll nach der Vorlage „{v.kennung}“ "
         f"({v.name}) geschrieben werden. Schreib sie nach dieser Vorlage neu. Setz „vorlage“ auf „{v.kennung}“.\n\n"
         f"Bisherige Notiz („{notiz.get('vorlage')}“): {notiz.get('titel')}\n\n"
