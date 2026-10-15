@@ -115,6 +115,9 @@ object GoogleDocs {
             val z = roh.trim()
             when {
                 z.isBlank() -> listeZu()
+                z.startsWith("![") && z.contains("](foto_") -> {
+                    listeZu(); aus.append("<p><i>[Foto]</i></p>")
+                }
                 z.startsWith("#") -> {
                     listeZu(); aus.append("<h3>").append(inline(z.trimStart('#', ' '))).append("</h3>")
                 }

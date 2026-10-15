@@ -8,6 +8,7 @@ beim Ändern der Vorlage die alten Dateien ersetzt, ohne fremde Dateien im Ordne
 import json
 import logging
 import re
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from .vorlagen import NACH_KENNUNG
 log = logging.getLogger("braininger")
 
 LISTE = "notizdateien.json"
+_FOTO = re.compile(r"!\[([^\]]*)\]\((foto_[\w.]+\.jpg)\)")
 LEER_TITEL = "Kein verwertbarer Inhalt"  # so nennt auswertung.py leere Aufnahmen
 _VERBOTEN = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
 
@@ -41,8 +43,23 @@ def _liste_lesen(lokal: Path) -> list[str]:
         return []
 
 
-def ablegen(aufnahme_id: str, modus: str, notizen: list[dict], lokal: Path) -> list[Path]:
-    """Schreibt alle Notizen einer Aufnahme und ersetzt ihre früheren Dateien."""
+def _fotos_kopieren(inhalt: str, aufnahme_id: str, ordner: Path, foto_ordner: Path | None, neu: list[Path]) -> str:
+    """Fotos neben die Notiz legen (Unterordner „Fotos“), damit sie auch nach dem Aufräumen im Drive bleiben."""
+    def ersetzen(m: re.Match) -> str:
+        if foto_ordner is None or not (foto_ordner / m.group(2)).is_file():
+            return m.group(0)
+        ziel = ordner / "Fotos" / f"{aufnahme_id}_{m.group(2)}"
+        ziel.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(foto_ordner / m.group(2), ziel)
+        if ziel not in neu:
+            neu.append(ziel)
+        return f"![{m.group(1)}](Fotos/{ziel.name})"
+    return _FOTO.sub(ersetzen, inhalt)
+
+
+def ablegen(aufnahme_id: str, modus: str, notizen: list[dict], lokal: Path,
+            foto_ordner: Path | None = None) -> list[Path]:
+    """Schreibt alle Notizen einer Aufnahme (samt Fotos) und ersetzt ihre früheren Dateien."""
     zeit = zeit_aus_id(aufnahme_id)
     ordner = E.NOTIZEN / f"{zeit:%Y-%m}"
     for alt in _liste_lesen(lokal):
@@ -69,7 +86,8 @@ def ablegen(aufnahme_id: str, modus: str, notizen: list[dict], lokal: Path) -> l
             "---\n\n"
             f"# {n.get('titel', '')}\n\n"
         )
-        ergebnis.lokal_schreiben(datei, kopf + str(n.get("inhalt", "")).strip() + "\n")
+        inhalt = _fotos_kopieren(str(n.get("inhalt", "")).strip(), aufnahme_id, ordner, foto_ordner, neu)
+        ergebnis.lokal_schreiben(datei, kopf + inhalt + "\n")
         neu.append(datei)
 
     ergebnis.lokal_schreiben(lokal / LISTE, json.dumps(

@@ -47,7 +47,7 @@ object Ablage {
     fun infoSchreiben(
         ordner: File, modus: Modus, start: Long, ende: Long?,
         stuecke: List<String>, mikrofon: String, status: String, hinweise: List<String>,
-        markierungen: List<Long> = emptyList(),
+        markierungen: List<Long> = emptyList(), fotos: List<Pair<String, Long>> = emptyList(),
     ) {
         val json = JSONObject().apply {
             put("version", 1)
@@ -61,6 +61,7 @@ object Ablage {
             put("status", status)
             put("hinweise", JSONArray(hinweise))
             put("markierungen", JSONArray(markierungen))
+            put("fotos", JSONArray(fotos.map { (datei, sek) -> JSONObject().put("datei", datei).put("zeit_s", sek) }))
             put("app_version", BuildConfig.VERSION_NAME)
         }
         val tmp = File(ordner, "info.json.tmp")
@@ -87,7 +88,16 @@ object Ablage {
                 a.ordner, a.modus, a.start, letzte, teile, a.mikrofon, "unterbrochen",
                 listOf("Aufnahme wurde unterbrochen, ${teile.size} Stücke gerettet."),
                 infoLesen(a.ordner)?.optJSONArray("markierungen")?.let { m -> (0 until m.length()).map { m.getLong(it) } }.orEmpty(),
+                fotosLesen(a.ordner),
             )
+        }
+    }
+
+    /** Fotos einer Aufnahme laut info.json: Dateiname und Sekunde ab Beginn. */
+    fun fotosLesen(ordner: File): List<Pair<String, Long>> {
+        val f = infoLesen(ordner)?.optJSONArray("fotos") ?: return emptyList()
+        return (0 until f.length()).mapNotNull { i ->
+            f.optJSONObject(i)?.let { it.optString("datei") to it.optLong("zeit_s") }?.takeIf { it.first.isNotBlank() }
         }
     }
 

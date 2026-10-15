@@ -33,6 +33,9 @@ class AufnahmeDienst : Service() {
         private const val AKTION_START = "de.braininger.START"
         private const val AKTION_STOPP = "de.braininger.STOPP"
         private const val AKTION_MARKIEREN = "de.braininger.MARKIEREN"
+        private const val AKTION_FOTO = "de.braininger.FOTO"
+        private const val EXTRA_DATEI = "datei"
+        private const val EXTRA_SEK = "sek"
         private const val EXTRA_MODUS = "modus"
         private const val KANAL_AUFNAHME = "aufnahme"
         private const val KANAL_HINWEISE = "hinweise"
@@ -43,6 +46,14 @@ class AufnahmeDienst : Service() {
             val intent = Intent(context, AufnahmeDienst::class.java)
                 .setAction(AKTION_START).putExtra(EXTRA_MODUS, modus.kennung)
             ContextCompat.startForegroundService(context, intent)
+        }
+
+        /** Die Foto-Seite meldet ein fertiges Foto, damit es in info.json steht und hochgeladen wird. */
+        fun fotoMelden(context: Context, datei: String, sek: Long) {
+            context.startService(
+                Intent(context, AufnahmeDienst::class.java).setAction(AKTION_FOTO)
+                    .putExtra(EXTRA_DATEI, datei).putExtra(EXTRA_SEK, sek)
+            )
         }
 
         fun stoppen(context: Context) {
@@ -67,6 +78,7 @@ class AufnahmeDienst : Service() {
     private val stuecke = mutableListOf<String>()
     private val hinweise = mutableListOf<String>()
     private val markierungen = mutableListOf<Long>() // Sekunden ab Aufnahmebeginn
+    private val fotos = mutableListOf<Pair<String, Long>>() // Datei, Sekunde
     private var weckSperre: PowerManager.WakeLock? = null
     private val haupt = Handler(Looper.getMainLooper())
     private lateinit var audio: AudioManager
@@ -89,6 +101,14 @@ class AufnahmeDienst : Service() {
             AKTION_START -> if (recorder == null) aufnahmeStarten(Modus.aus(intent.getStringExtra(EXTRA_MODUS)))
             AKTION_STOPP -> aufnahmeBeenden()
             AKTION_MARKIEREN -> markieren()
+            AKTION_FOTO -> {
+                val datei = intent.getStringExtra(EXTRA_DATEI)
+                if (recorder != null && datei != null) {
+                    fotos += datei to intent.getLongExtra(EXTRA_SEK, 0L)
+                    infoSchreiben(ende = null, status = "laeuft")
+                    HochladenAuftrag.anstossen(this)
+                } else if (recorder == null) stopSelf()
+            }
         }
         return START_NOT_STICKY
     }
@@ -99,6 +119,7 @@ class AufnahmeDienst : Service() {
         stuecke.clear()
         hinweise.clear()
         markierungen.clear()
+        fotos.clear()
 
         // Sofort in den Vordergrund, sonst beendet Android den Dienst nach wenigen Sekunden.
         ServiceCompat.startForeground(
@@ -112,6 +133,8 @@ class AufnahmeDienst : Service() {
         val geraet = MikroWahl.bestes(this)
         val o = Ablage.neueAufnahme(this, modus, start)
         ordner = o
+        // erst jetzt kennt die Benachrichtigung den Ordner für den Foto-Knopf
+        getSystemService(NotificationManager::class.java).notify(ID_AUFNAHME, benachrichtigung())
         if (!MikroWahl.istExtern(geraet)) {
             hinweise += "Kein Lavalier gefunden, Aufnahme mit dem eingebauten Mikrofon."
             hinweisZeigen("Kein Lavalier-Mikrofon", "Braininger nimmt mit dem eingebauten Mikrofon auf.")
@@ -210,7 +233,7 @@ class AufnahmeDienst : Service() {
             Ablage.infoSchreiben(
                 o, modus, start, ende, stuecke.toList(),
                 AufnahmeStatus.zustand.value.mikrofon.ifBlank { MikroWahl.name(null) },
-                status, hinweise.toList(), markierungen.toList(),
+                status, hinweise.toList(), markierungen.toList(), fotos.toList(),
             )
         } catch (e: Exception) {
             hinweisZeigen("Speichern fehlgeschlagen", e.message ?: "unbekannter Fehler")
@@ -226,6 +249,12 @@ class AufnahmeDienst : Service() {
             this, 2, Intent(this, AufnahmeDienst::class.java).setAction(AKTION_MARKIEREN),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
+        val foto = ordner?.let {
+            PendingIntent.getActivity(
+                this, 3, FotoActivity.intent(this, it, start),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+        }
         val stopp = PendingIntent.getService(
             this, 1, Intent(this, AufnahmeDienst::class.java).setAction(AKTION_STOPP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
@@ -243,8 +272,10 @@ class AufnahmeDienst : Service() {
             .setOngoing(true)
             .setContentIntent(oeffnen)
             .addAction(0, getString(R.string.knopf_markieren), markieren)
+            .apply { foto?.let { addAction(0, getString(R.string.knopf_foto), it) } }
             .addAction(0, getString(R.string.knopf_stopp), stopp)
             .setOnlyAlertOnce(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC) // Knöpfe auch auf dem Sperrbildschirm
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build()

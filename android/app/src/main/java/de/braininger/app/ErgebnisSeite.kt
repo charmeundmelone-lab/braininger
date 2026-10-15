@@ -32,6 +32,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -116,7 +118,7 @@ fun ErgebnisSeite(aufnahme: Aufnahme, ergebnis: Ergebnis?, aktualisierung: Int, 
             LazyColumn(Modifier.weight(1f)) {
                 if (!zeigeText) {
                     items(ergebnis.notizen.withIndex().toList(), key = { it.index }) { (i, n) ->
-                        NotizKarte(n, aenderbar = offenerAuftrag == null) { vorlageWahl = i }
+                        NotizKarte(n, aufnahme.ordner, aenderbar = offenerAuftrag == null) { vorlageWahl = i }
                     }
                 } else {
                     items(ergebnis.abschnitte) { a ->
@@ -270,7 +272,7 @@ private fun Reiter(text: String, aktiv: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun NotizKarte(n: Notiz, aenderbar: Boolean, vorlageAendern: () -> Unit) {
+private fun NotizKarte(n: Notiz, ordner: java.io.File, aenderbar: Boolean, vorlageAendern: () -> Unit) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -289,16 +291,20 @@ private fun NotizKarte(n: Notiz, aenderbar: Boolean, vorlageAendern: () -> Unit)
         }
         Text(n.titel, color = Weiss, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
-        Markdown(n.inhalt)
+        Markdown(n.inhalt, ordner)
     }
 }
 
-/** Sehr einfache Markdown-Darstellung: Überschriften, Listen, Checkboxen, **fett**. */
+private val FOTO_ZEILE = Regex("""^!\[[^\]]*]\((foto_[\w.]+\.jpg)\)$""")
+
+/** Sehr einfache Markdown-Darstellung: Überschriften, Listen, Checkboxen, **fett**, Fotos aus dem Aufnahme-Ordner. */
 @Composable
-internal fun Markdown(text: String) {
+internal fun Markdown(text: String, ordner: java.io.File? = null) {
     for (roh in text.lines()) {
         val zeile = roh.trimEnd()
+        val foto = FOTO_ZEILE.find(zeile.trim())?.groupValues?.get(1)
         when {
+            foto != null -> ordner?.let { FotoBild(java.io.File(it, foto)) }
             zeile.isBlank() -> Spacer(Modifier.height(6.dp))
             zeile.startsWith("#") -> {
                 Spacer(Modifier.height(6.dp))
@@ -324,6 +330,28 @@ internal fun Markdown(text: String) {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun FotoBild(datei: java.io.File) {
+    val bild = remember(datei.path) {
+        try {
+            val o = android.graphics.BitmapFactory.Options().apply { inSampleSize = 2 }
+            android.graphics.BitmapFactory.decodeFile(datei.path, o)?.asImageBitmap()
+        } catch (_: Exception) {
+            null
+        }
+    }
+    if (bild != null) {
+        androidx.compose.foundation.Image(
+            bild, contentDescription = "Foto",
+            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)
+                .clip(RoundedCornerShape(12.dp)),
+            contentScale = androidx.compose.ui.layout.ContentScale.FillWidth,
+        )
+    } else {
+        Text("[Foto nicht mehr auf dem Handy]", color = Grau, fontSize = 13.sp)
     }
 }
 

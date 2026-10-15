@@ -1,5 +1,6 @@
 """Text → Notiz(en): Claude wählt die Vorlage(n) und schreibt die Notizen."""
 import json
+from pathlib import Path
 
 from . import claude_aufruf, woerterbuch
 from .einstellungen import CLAUDE_ARBEITSORDNER, PERSOENLICH
@@ -36,6 +37,10 @@ Regeln:
   meist der gerade davor gesagte (bis etwa 30 Sekunden), manchmal der direkt danach angekündigte. Liegen mehrere
   Markierungen beim selben Gedanken, nimm ihn nur einmal. Im Notiztext erwähnst du Markierungen, Zeiten und deine
   Abwägung nicht; die Zeit steht nur im Feld „wichtig“.
+- Fotos: Stehen unter „Fotos“ Dateien, hat {name} während der Aufnahme fotografiert; die Bilder liegen dieser
+  Nachricht in derselben Reihenfolge bei. Lies, was darauf zu sehen ist (z. B. Setlist, Zettel, Rechnung, Ort),
+  und nimm das Wichtige in die passende Notiz auf. Setz das Foto dort als eigene Zeile „![Foto](<Dateiname>)“ ein,
+  wo es inhaltlich hingehört. Ist auf einem Foto nichts erkennbar, setz nur die Zeile.
 - Aufgaben schreibst du als Markdown-Checkliste „- [ ] …“ mit Frist, falls genannt.
 - Ist die Aufnahme leer, unverständlich oder nur Rauschen, schreib eine einzige kurze Notiz mit Vorlage „tagebuch“
   und dem Titel „Kein verwertbarer Inhalt“.
@@ -122,7 +127,8 @@ def _woerterbuch_text() -> str:
 
 
 def prompt_bauen(text: Text, modus: str, start: str, dauer_s: float, hinweise: list[str],
-                 namen: dict[str, str] | None = None, markierungen: list[float] | None = None) -> str:
+                 namen: dict[str, str] | None = None, markierungen: list[float] | None = None,
+                 fotos: list[tuple[str, float]] | None = None) -> str:
     """namen: {"S1": "Jan"} – im Text werden die Kennungen durch die Namen ersetzt."""
     kopf = [
         f"Aufnahme vom {start}, Dauer {dauer_s / 60:.1f} min, Modus „{modus}“, erkannte Sprache „{text.sprache}“.",
@@ -137,6 +143,9 @@ def prompt_bauen(text: Text, modus: str, start: str, dauer_s: float, hinweise: l
     if markierungen:
         kopf.append("Markierungen (Markier-Knopf) bei: "
                     + ", ".join(f"{int(m) // 60}:{int(m) % 60:02d} ({m:.0f} s)" for m in sorted(markierungen)) + ".")
+    if fotos:
+        kopf.append("Fotos (in dieser Reihenfolge beigefügt): "
+                    + ", ".join(f"{d} bei {int(s) // 60}:{int(s) % 60:02d}" for d, s in fotos) + ".")
     return (
         "# Vorlagen\n\n" + _vorlagen_text() + _woerterbuch_text()
         + "\n\n# Aufnahme\n\n" + "\n".join(kopf)
@@ -146,14 +155,17 @@ def prompt_bauen(text: Text, modus: str, start: str, dauer_s: float, hinweise: l
 
 
 def auswerten(text: Text, modus: str, start: str, dauer_s: float, hinweise: list[str],
-              namen: dict[str, str] | None = None, markierungen: list[float] | None = None) -> dict:
+              namen: dict[str, str] | None = None, markierungen: list[float] | None = None,
+              fotos: list[Path] | None = None, foto_zeiten: list[float] | None = None) -> dict:
     """Wirft claude_aufruf.ClaudeLimitErreicht, wenn das Abo-Limit erreicht ist."""
     antwort = claude_aufruf.frage(
-        prompt_bauen(text, modus, start, dauer_s, hinweise, namen, markierungen),
+        prompt_bauen(text, modus, start, dauer_s, hinweise, namen, markierungen,
+                     [(f.name, z) for f, z in zip(fotos or [], foto_zeiten or [])]),
         zeitlimit_s=900,
         system_prompt=_system_prompt(),
         json_schema=SCHEMA,
         arbeitsordner=CLAUDE_ARBEITSORDNER,
+        bilder=fotos or None,
     )
     daten = antwort.daten
     # Zur Sicherheit selbst prüfen, falls Claude doch vom Schema abweicht

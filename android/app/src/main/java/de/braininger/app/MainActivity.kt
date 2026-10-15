@@ -181,7 +181,7 @@ private fun Startseite(aktualisierung: Int) {
 
     LaunchedEffect(aktualisierung, zustand.laeuft, zustand.stueckeFertig) { pruefen() }
     LaunchedEffect(Unit) {
-        val fehlend = listOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS)
+        val fehlend = listOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS, Manifest.permission.CAMERA)
             .filter { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
         if (fehlend.isNotEmpty()) erlaubnisAnfrage.launch(fehlend.toTypedArray())
     }

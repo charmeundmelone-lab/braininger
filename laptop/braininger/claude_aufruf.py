@@ -3,6 +3,7 @@
 Der Schlüssel wird nie in eine Datei oder eine dauerhafte Umgebungsvariable geschrieben,
 sondern nur für den einzelnen Claude-Aufruf übergeben.
 """
+import base64
 import json
 import os
 import shutil
@@ -42,6 +43,7 @@ def frage(
     system_prompt: str | None = None,
     json_schema: dict | None = None,
     arbeitsordner: Path | None = None,
+    bilder: list[Path] | None = None,
 ) -> ClaudeAntwort:
     """Ohne system_prompt: normales Claude Code. Mit system_prompt: abgeschottet, ohne Werkzeuge,
     ohne Einstellungen/CLAUDE.md und ohne gespeicherte Sitzung (für die Auswertung der Aufnahmen)."""
@@ -69,13 +71,22 @@ def frage(
         ]
     if json_schema is not None:
         befehl += ["--json-schema", json.dumps(json_schema, ensure_ascii=False)]
+    eingabe = prompt
+    if bilder:
+        # Bilder gehen nur als Nachricht im stream-json-Format mit (am 15.10.2026 getestet: Claude liest sie)
+        befehl[befehl.index("--output-format") + 1] = "stream-json"
+        befehl += ["--input-format", "stream-json", "--verbose"]
+        inhalt = [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                               "data": base64.b64encode(b.read_bytes()).decode()}} for b in bilder]
+        inhalt.append({"type": "text", "text": prompt})
+        eingabe = json.dumps({"type": "user", "message": {"role": "user", "content": inhalt}}) + "\n"
     if arbeitsordner is not None:
         arbeitsordner.mkdir(parents=True, exist_ok=True)
 
     try:
         lauf = subprocess.run(
             befehl,
-            input=prompt,
+            input=eingabe,
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -87,8 +98,12 @@ def frage(
     except subprocess.TimeoutExpired:
         raise ClaudeFehler(f"Claude hat nach {zeitlimit_s} s nicht geantwortet.")
     try:
-        ergebnis = json.loads(lauf.stdout)
-    except json.JSONDecodeError:
+        if bilder:  # stream-json: eine Zeile je Ereignis, das Ergebnis steht in der Zeile vom Typ „result“
+            ergebnis = next(j for j in map(json.loads, filter(None, lauf.stdout.splitlines()))
+                            if j.get("type") == "result")
+        else:
+            ergebnis = json.loads(lauf.stdout)
+    except (json.JSONDecodeError, StopIteration):
         raise ClaudeFehler(f"Unerwartete Ausgabe von Claude Code: {lauf.stdout[:300]} {lauf.stderr[:300]}")
 
     if ergebnis.get("is_error"):

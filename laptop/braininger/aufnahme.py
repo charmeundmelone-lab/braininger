@@ -1,5 +1,6 @@
 """Eine Aufnahme im Drive-Eingang: info.json lesen, Stücke prüfen und zu einem Audio zusammenfügen."""
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -23,6 +24,7 @@ class Aufnahme:
     hinweise: list[str] = field(default_factory=list)
     app_version: str = ""
     markierungen: list[float] = field(default_factory=list)  # Markier-Knopf, Sekunden ab Beginn
+    fotos: list[tuple[str, float]] = field(default_factory=list)  # Foto-Knopf: (Datei, Sekunde)
 
     @property
     def abgeschlossen(self) -> bool:
@@ -35,7 +37,7 @@ class Aufnahme:
     def fehlende_stuecke(self) -> list[str]:
         """Stücke, die Google Drive für Desktop (noch) nicht oder leer zeigt."""
         fehlend = []
-        for name in self.stuecke:
+        for name in self.stuecke + [f for f, _ in self.fotos]:
             try:
                 if (self.ordner / name).stat().st_size == 0:
                     fehlend.append(name)
@@ -63,6 +65,8 @@ def lesen(ordner: Path) -> Aufnahme | None:
         hinweise=list(j.get("hinweise") or []),
         app_version=j.get("app_version", ""),
         markierungen=[float(m) for m in j.get("markierungen") or [] if isinstance(m, (int, float))],
+        fotos=[(str(f["datei"]), float(f.get("zeit_s") or 0)) for f in j.get("fotos") or []
+               if isinstance(f, dict) and re.fullmatch(r"foto_[\w.]+\.jpg", str(f.get("datei", "")))],
     )
 
 

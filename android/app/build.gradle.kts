@@ -63,6 +63,9 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("com.google.android.gms:play-services-auth:22.0.0")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
+    implementation("androidx.camera:camera-camera2:1.4.1")
+    implementation("androidx.camera:camera-lifecycle:1.4.1")
+    implementation("androidx.camera:camera-view:1.4.1")
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

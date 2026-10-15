@@ -110,7 +110,9 @@ class HochladenAuftrag(context: Context, params: WorkerParameters) : CoroutineWo
                 val stand = UploadStand.lesen(a.ordner)
                 if (stand.abgeschlossen) continue
                 val info = Ablage.infoLesen(a.ordner) ?: continue
-                val stuecke = info.optJSONArray("stuecke")?.let { arr -> (0 until arr.length()).map { arr.getString(it) } }.orEmpty()
+                // Tonstücke und Fotos werden gleich behandelt: jede Datei einmal hochladen
+                val stuecke = info.optJSONArray("stuecke")?.let { arr -> (0 until arr.length()).map { arr.getString(it) } }.orEmpty() +
+                    Ablage.fotosLesen(a.ordner).map { it.first }
                 val offen = stuecke.filter { it !in stand.dateien }
                 val ende = a.status == "fertig" || a.status == "unterbrochen"
                 if (offen.isEmpty() && !ende) continue
@@ -127,7 +129,7 @@ class HochladenAuftrag(context: Context, params: WorkerParameters) : CoroutineWo
                     val datei = File(a.ordner, name)
                     if (!datei.exists()) continue
                     val id = api.dateiFinden(name, ordnerId)?.id
-                        ?: api.hochladen(name, ordnerId, "audio/mp4", datei.readBytes())
+                        ?: api.hochladen(name, ordnerId, if (name.endsWith(".jpg")) "image/jpeg" else "audio/mp4", datei.readBytes())
                     stand.dateien[name] = id
                     stand.speichern(a.ordner)
                 }

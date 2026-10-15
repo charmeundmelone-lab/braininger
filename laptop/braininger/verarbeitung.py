@@ -172,6 +172,11 @@ class Bearbeitung:
                 namen[k] = n
         self.daten["sprecher"] = [{"kennung": k, "name": n} for k, n in sorted(namen.items())]
 
+    def _fotos(self) -> tuple[list[Path], list[float]]:
+        """Fotos, die im Drive angekommen sind, und ihre Zeitpunkte."""
+        da = [(self.a.ordner / d, s) for d, s in self.a.fotos if (self.a.ordner / d).is_file()]
+        return [p for p, _ in da], [s for _, s in da]
+
     def _notizen_ablegen(self, notizen: list[dict]) -> None:
         """Jede Notiz zusätzlich als Markdown-Datei, zum Lesen am Laptop."""
         for alt in self.lokal.glob("notiz_*.md"):
@@ -181,7 +186,7 @@ class Bearbeitung:
             kopf = f"# {n['titel']}\n\n*{vorlage} · Aufnahme {self.a.id}*\n\n"
             ergebnis.lokal_schreiben(self.lokal / f"notiz_{i}_{n['vorlage']}.md", kopf + n["inhalt"].strip() + "\n")
         try:
-            notizdateien.ablegen(self.a.id, self.a.modus, notizen, self.lokal)
+            notizdateien.ablegen(self.a.id, self.a.modus, notizen, self.lokal, foto_ordner=self.a.ordner)
         except (OSError, ValueError):  # der Ordner „Braininger Notizen“ ist nur eine Lesekopie
             log.exception("%s: Notizdateien ließen sich nicht schreiben", self.a.id)
 
@@ -195,7 +200,7 @@ class Bearbeitung:
             dauer = self.daten.get("dauer_audio_s") or float(self.a.dauer_s or 0)
             namen = self._sprecher_namen(text)
             antwort = auswertung.auswerten(text, self.a.modus, self.a.start, dauer, self.daten.get("hinweise", []),
-                                           namen, self.a.markierungen)
+                                           namen, self.a.markierungen, *self._fotos())
             self._notizen_ablegen(antwort["notizen"])
             self._sprecher_melden(namen, antwort.get("sprecher", []))
             self.daten.update(
@@ -254,7 +259,7 @@ class Bearbeitung:
         namen = self._sprecher_namen(text)
         dauer = self.daten.get("dauer_audio_s") or float(self.a.dauer_s or 0)
         antwort = auswertung.auswerten(text, self.a.modus, self.a.start, dauer, self.daten.get("hinweise", []), namen,
-                                       self.a.markierungen)
+                                       self.a.markierungen, *self._fotos())
         self._notizen_ablegen(antwort["notizen"])
         self._sprecher_melden(namen, antwort.get("sprecher", []))
         self.daten.update(kurz=antwort["kurz"], notizen=antwort["notizen"], wichtig=antwort.get("wichtig", []))
