@@ -131,6 +131,7 @@ private fun Startseite(aktualisierung: Int) {
     var suche by remember { mutableStateOf("") }
     var zeigeUebersicht by remember { mutableStateOf(false) }
     var zeigeFragen by remember { mutableStateOf(false) }
+    var vonFragen by remember { mutableStateOf(false) }
     var abrufZaehler by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
 
@@ -223,13 +224,17 @@ private fun Startseite(aktualisierung: Int) {
         return
     }
     if (zeigeFragen) {
-        FrageSeite(zurueck = { zeigeFragen = false }) { id -> zeigeFragen = false; offen = id }
+        FrageSeite(zurueck = { zeigeFragen = false }) { id -> zeigeFragen = false; vonFragen = true; offen = id }
         return
     }
     val offeneAufnahme = offen?.let { name -> aufnahmen.firstOrNull { it.ordner.name == name } }
     if (offeneAufnahme != null) {
         ErgebnisSeite(offeneAufnahme, ergebnisse[offeneAufnahme.ordner.name], aktualisierung + abrufZaehler) {
             offen = null
+            // aus einer Antwort geöffnet: zurück zu den Fragen
+            if (vonFragen) {
+                vonFragen = false; zeigeFragen = true
+            }
         }
         return
     }
