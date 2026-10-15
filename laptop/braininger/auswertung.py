@@ -20,6 +20,9 @@ Regeln:
 - Schreib auf Deutsch, knapp und konkret, in Markdown. Daten, Uhrzeiten, Beträge, Namen und Orte genau übernehmen.
 - Gesprächspartner heißen im Text S1, S2 usw. Wenn aus dem Gespräch klar hervorgeht, wer wer ist, nenne die Namen.
   Bei Aufnahmen im Modus „gedanke“ spricht {name} allein.
+- Perspektive: Im Modus „gedanke“ schreibst du in der Ich-Form, als hätte {name} die Notiz selbst geschrieben
+  („Ich bin müde …“, „Ich will morgen …“). Im Modus „gespraech“ schreibst du in der dritten Person und nennst
+  {name} beim Namen, damit klar ist, wer was gesagt hat („{name} bietet an …, S2 fragt …“).
 - „[Pause …]“ im Text steht für eine lange Stille. Danach beginnt oft ein neues Thema; prüfe, ob eine eigene Notiz passt.
 - Aufgaben schreibst du als Markdown-Checkliste „- [ ] …“ mit Frist, falls genannt.
 - Ist die Aufnahme leer, unverständlich oder nur Rauschen, schreib eine einzige kurze Notiz mit Vorlage „tagebuch“
