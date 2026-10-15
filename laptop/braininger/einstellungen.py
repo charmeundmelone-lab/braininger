@@ -26,7 +26,9 @@ SEGMENTIERUNG_MODELL = MODELLE / "sherpa-onnx-pyannote-segmentation-3-0" / "mode
 STIMMEN_MODELL = MODELLE / "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
 
 # Gemessen am 14.10.2026 (Tempotest): turbo, beam 1, int8, 8 Threads ≈ 0,76x Echtzeit
-THREADS = 8
+# 15.10.2026, 3 min Hörtext: 4 Threads 0,40–0,42x, 5: 0,42x, 6: 0,42x, 8: 0,47x, 12: 0,53x, 3: 0,82x.
+# Der i5-12450H hat 4 schnelle Kerne; mehr Threads landen auf den sparsamen Kernen und bremsen.
+THREADS = 4
 WHISPER_BEAM = 1
 SPRECHER_SCHWELLE = 0.9  # 0,9–0,95 lag richtig, 0,5 fand 4 Sprecher bei einer Stimme
 
