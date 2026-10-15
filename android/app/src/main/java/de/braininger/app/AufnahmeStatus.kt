@@ -13,6 +13,9 @@ data class AufnahmeZustand(
     val mikrofon: String = "",
     val mikrofonExtern: Boolean = false,
     val warnung: String? = null,
+    val ordner: String? = null, // für den Foto-Knopf in der App
+    val markierungen: Int = 0,
+    val fotos: Int = 0,
 )
 
 /** Gemeinsamer Zustand zwischen Aufnahme-Dienst, App-Oberfläche und Widget. */

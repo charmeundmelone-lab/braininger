@@ -407,6 +407,30 @@ private fun LaufendeAufnahme(z: AufnahmeZustand, jetzt: Long, stopp: () -> Unit)
             color = if (z.mikrofonExtern) Grau else Rot, fontSize = 13.sp,
         )
         Spacer(Modifier.height(16.dp))
+        val context = LocalContext.current
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedButton(
+                onClick = { AufnahmeDienst.markieren(context) },
+                modifier = Modifier.weight(1f).height(52.dp),
+                shape = RoundedCornerShape(26.dp),
+                border = BorderStroke(1.5.dp, Weiss),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Weiss),
+            ) {
+                Text(if (z.markierungen > 0) "MARKIERT ${z.markierungen}" else "MARKIEREN",
+                     fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
+            }
+            OutlinedButton(
+                onClick = { z.ordner?.let { context.startActivity(FotoActivity.intent(context, java.io.File(it), z.start)) } },
+                modifier = Modifier.weight(1f).height(52.dp),
+                shape = RoundedCornerShape(26.dp),
+                border = BorderStroke(1.5.dp, Weiss),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Weiss),
+            ) {
+                Text(if (z.fotos > 0) "FOTO ${z.fotos}" else "FOTO",
+                     fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
+            }
+        }
+        Spacer(Modifier.height(12.dp))
         Button(
             onClick = stopp,
             modifier = Modifier.fillMaxWidth().height(56.dp),

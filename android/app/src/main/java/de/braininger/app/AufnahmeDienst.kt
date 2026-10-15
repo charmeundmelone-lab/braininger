@@ -56,6 +56,10 @@ class AufnahmeDienst : Service() {
             )
         }
 
+        fun markieren(context: Context) {
+            context.startService(Intent(context, AufnahmeDienst::class.java).setAction(AKTION_MARKIEREN))
+        }
+
         fun stoppen(context: Context) {
             context.startService(Intent(context, AufnahmeDienst::class.java).setAction(AKTION_STOPP))
         }
@@ -105,6 +109,7 @@ class AufnahmeDienst : Service() {
                 val datei = intent.getStringExtra(EXTRA_DATEI)
                 if (recorder != null && datei != null) {
                     fotos += datei to intent.getLongExtra(EXTRA_SEK, 0L)
+                    AufnahmeStatus.aendern { it.copy(fotos = fotos.size) }
                     infoSchreiben(ende = null, status = "laeuft")
                     HochladenAuftrag.anstossen(this)
                 } else if (recorder == null) stopSelf()
@@ -153,6 +158,7 @@ class AufnahmeDienst : Service() {
                 laeuft = true, modus = modus, start = start,
                 mikrofon = MikroWahl.name(geraet), mikrofonExtern = MikroWahl.istExtern(geraet),
                 warnung = if (MikroWahl.istExtern(geraet)) null else "Eingebautes Mikrofon",
+                ordner = o.absolutePath,
             )
         )
         infoSchreiben(ende = null, status = "laeuft")
@@ -170,6 +176,7 @@ class AufnahmeDienst : Service() {
     private fun markieren() {
         if (recorder == null) return
         markierungen += (System.currentTimeMillis() - start) / 1000
+        AufnahmeStatus.aendern { it.copy(markierungen = markierungen.size) }
         infoSchreiben(ende = null, status = "laeuft")
         try {
             getSystemService(Vibrator::class.java)?.vibrate(VibrationEffect.createOneShot(80, VibrationEffect.DEFAULT_AMPLITUDE))
