@@ -78,10 +78,18 @@ class HochladenAuftrag(context: Context, params: WorkerParameters) : CoroutineWo
         private const val ANMELDUNG_FEHLT = "anmeldung_fehlt"
         private const val ERGEBNIS_VORLAGE = "{\"version\": 1, \"status\": \"hochgeladen\"}\n"
 
-        fun anstossen(context: Context) {
+        // Android verdoppelt die Pause nach jedem Fehlversuch (30 s, 1, 2, 4 min …, bis 5 h).
+        // Nach so vielen Versuchen fangen wir neu an, damit die Pause nie länger als ein paar Minuten wird.
+        private const val MAX_VERSUCHE = 4
+        private const val NEUSTART_MINUTEN = 5L
+
+        fun anstossen(context: Context) = einreihen(context, 0)
+
+        private fun einreihen(context: Context, verzoegerungMin: Long) {
             val auftrag = OneTimeWorkRequestBuilder<HochladenAuftrag>()
                 .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+                .setInitialDelay(verzoegerungMin, TimeUnit.MINUTES)
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(NAME, ExistingWorkPolicy.APPEND_OR_REPLACE, auftrag)
         }
@@ -155,10 +163,18 @@ class HochladenAuftrag(context: Context, params: WorkerParameters) : CoroutineWo
             if (e.code in 400..499 && e.code != 429 && e.code != 408) {
                 hinweis(ctx, "Hochladen fehlgeschlagen", e.message ?: "")
                 Result.failure()
-            } else Result.retry()
+            } else nochmal()
         } catch (e: IOException) {
-            Result.retry()
+            nochmal()
         }
+    }
+
+    /** Netz scheint da, aber der Upload klappt nicht (z. B. Funkloch mit einem Balken). */
+    private fun nochmal(): Result {
+        if (runAttemptCount < MAX_VERSUCHE) return Result.retry()
+        // Neuer Auftrag hinter diesem: startet in NEUSTART_MINUTEN mit frischer, kurzer Pause.
+        einreihen(applicationContext, NEUSTART_MINUTEN)
+        return Result.success()
     }
 
     private fun hinweis(ctx: Context, titel: String, text: String) {
