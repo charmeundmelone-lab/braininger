@@ -116,6 +116,39 @@ fun ErgebnisSeite(aufnahme: Aufnahme, ergebnis: Ergebnis?, aktualisierung: Int, 
                 Reiter("TEXT", zeigeText) { zeigeText = true }
             }
             LazyColumn(Modifier.weight(1f)) {
+                val hinweis = ergebnis.vorlageHinweis
+                if (!zeigeText && hinweis != null && offenerAuftrag == null && ergebnis.notizen.isNotEmpty()) {
+                    item {
+                        Column(
+                            Modifier.fillMaxWidth().padding(vertical = 6.dp)
+                                .border(1.dp, Weiss, RoundedCornerShape(16.dp)).padding(14.dp)
+                        ) {
+                            Text("Passt eher zu: ${Vorlagen.name(hinweis.first)}", color = Weiss, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                            if (hinweis.second.isNotBlank()) Text(hinweis.second, color = Grau, fontSize = 13.sp)
+                            Text(
+                                "UMSTELLEN", color = Weiss, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.clickable {
+                                    meldung = null
+                                    scope.launch {
+                                        try {
+                                            Auftraege.vorlageAendern(context, aufnahme.ordner, 0, hinweis.first)
+                                        } catch (e: AnmeldungNoetig) {
+                                            meldung = "Erst bei Google anmelden."
+                                        } catch (e: Exception) {
+                                            meldung = "Auftrag nicht gesendet: ${e.message}"
+                                        }
+                                    }
+                                }.padding(top = 8.dp),
+                            )
+                        }
+                    }
+                }
+                if (!zeigeText && ergebnis.notizen.isEmpty()) {
+                    item {
+                        Text("Kurzer Merker: keine Notiz, nur Aufgaben-Vorschlag. Was gesagt wurde, steht unter TEXT.",
+                             color = Grau, fontSize = 14.sp, modifier = Modifier.padding(vertical = 8.dp))
+                    }
+                }
                 if (!zeigeText) {
                     items(ergebnis.notizen.withIndex().toList(), key = { it.index }) { (i, n) ->
                         NotizKarte(n, aufnahme.ordner, aenderbar = offenerAuftrag == null) { vorlageWahl = i }
@@ -282,6 +315,16 @@ private fun NotizKarte(n: Notiz, ordner: java.io.File, aenderbar: Boolean, vorla
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(Vorlagen.name(n.vorlage).uppercase(), color = Grau, fontSize = 11.sp, letterSpacing = 1.5.sp, modifier = Modifier.weight(1f))
+            val context = LocalContext.current
+            Text(
+                "TEILEN", color = Weiss, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.clickable {
+                    val text = n.titel + "\n\n" + n.inhalt.lines().filterNot { it.trim().startsWith("![") }.joinToString("\n").trim()
+                    context.startActivity(android.content.Intent.createChooser(
+                        android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain")
+                            .putExtra(android.content.Intent.EXTRA_TEXT, text), null))
+                }.padding(6.dp),
+            )
             if (aenderbar) {
                 Text(
                     "ÄNDERN", color = Weiss, fontSize = 11.sp, fontWeight = FontWeight.Bold,

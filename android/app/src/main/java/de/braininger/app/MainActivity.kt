@@ -94,6 +94,8 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         AufnahmeDienst.kanaeleAnlegen(this)
+        Erinnerungen.kanalAnlegen(this)
+        Erinnerungen.allePlanen(this)
         setContent { BrainingerThema { Startseite(aktualisierung) } }
     }
 
@@ -239,13 +241,19 @@ private fun Startseite(aktualisierung: Int) {
         return
     }
 
-    Column(
+    val treffer = remember(aufnahmen, ergebnisse, suche) {
+        aufnahmen.mapNotNull { a -> Suche.treffer(a, ergebnisse[a.ordner.name], suche)?.let { a to it } }
+    }
+    // Die ganze Seite scrollt, damit Aufgaben, Vorschläge und Aufnahmen immer Platz haben
+    LazyColumn(
         Modifier
             .fillMaxSize()
             .background(Schwarz)
             .safeDrawingPadding()
             .padding(horizontal = 20.dp)
     ) {
+        item {
+        Column {
         Spacer(Modifier.height(16.dp))
         Text("BRAININGER", fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 34.sp, color = Weiss)
         Text("Gedanken und Gespräche festhalten", color = Grau, fontSize = 13.sp)
@@ -283,6 +291,8 @@ private fun Startseite(aktualisierung: Int) {
             Hinweis("Für den Upload ins Google Drive einmal bei Google anmelden.", "ANMELDEN") { anmelden() }
         }
 
+        AufgabenBereich()
+
         testText?.let {
             Text(
                 it, color = Grau, fontSize = 12.sp,
@@ -315,16 +325,14 @@ private fun Startseite(aktualisierung: Int) {
         if (aufnahmen.isEmpty()) {
             Text("Noch keine Aufnahmen.", color = Grau, fontSize = 14.sp)
         }
-        val treffer = remember(aufnahmen, ergebnisse, suche) {
-            aufnahmen.mapNotNull { a -> Suche.treffer(a, ergebnisse[a.ordner.name], suche)?.let { a to it } }
-        }
         if (suche.isNotBlank()) {
             Text(
                 if (treffer.isEmpty()) "Nichts gefunden." else "${treffer.size} Treffer",
                 color = Grau, fontSize = 12.sp, modifier = Modifier.padding(vertical = 4.dp),
             )
         }
-        LazyColumn(Modifier.weight(1f)) {
+        }
+        }
             items(treffer, key = { it.first.ordner.name }) { (a, ausschnitt) ->
                 AufnahmeZeile(a, uploads[a.ordner.name], ergebnisse[a.ordner.name]) {
                     offen = a.ordner.name
@@ -338,13 +346,14 @@ private fun Startseite(aktualisierung: Int) {
                 }
                 HorizontalDivider(color = Linie)
             }
-        }
+        item {
         Text(
             "Version ${BuildConfig.VERSION_NAME}",
             color = Grau, fontSize = 11.sp,
             modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
             textAlign = TextAlign.Center,
         )
+        }
     }
 
     if (fragZustimmung) {

@@ -13,6 +13,9 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import de.braininger.app.Ablage
+import de.braininger.app.AufgabenAktion
+import de.braininger.app.AufgabenSpeicher
+import de.braininger.app.Vorschlag
 import de.braininger.app.MainActivity
 import de.braininger.app.R
 import org.json.JSONObject
@@ -47,6 +50,10 @@ data class Ergebnis(
     val sprecherDetails: List<SprecherInfo>,
     val bekannteNamen: List<String>,
     val auftragErledigt: Int,
+    /** Aufgaben-Vorschläge des Laptops; id = Position, aufnahme leer (setzt der Abruf). */
+    val vorschlaege: List<Vorschlag> = emptyList(),
+    /** Standard-Vorlage genommen, aber diese passt laut Claude besser: Kennung und Grund. */
+    val vorlageHinweis: Pair<String, String>? = null,
 ) {
     val endgueltig get() = status == "fertig" || status == "fehler"
 
@@ -74,6 +81,8 @@ data class Ergebnis(
             val sprecher = j.optJSONArray("sprecher")
             val details = j.optJSONArray("sprecher_details")
             val bekannte = j.optJSONArray("bekannte_namen")
+            val aufgaben = j.optJSONArray("aufgaben")
+            val hinweis = j.optJSONObject("vorlage_hinweis")
             Ergebnis(
                 status = j.optString("status", "hochgeladen"),
                 schritt = j.optString("schritt").takeUnless { j.isNull("schritt") || it.isBlank() },
@@ -109,6 +118,14 @@ data class Ergebnis(
                 },
                 bekannteNamen = (0 until (bekannte?.length() ?: 0)).map { bekannte!!.getString(it) },
                 auftragErledigt = j.optInt("auftrag_erledigt", 0),
+                vorschlaege = (0 until (aufgaben?.length() ?: 0)).mapNotNull {
+                    val v = aufgaben!!.optJSONObject(it) ?: return@mapNotNull null
+                    Vorschlag("$it", "", v.optString("art", "neu"), v.optString("text"),
+                        AufgabenSpeicher.zeitLesen(v.optString("frist")), v.optBoolean("unklar_wer"),
+                        v.optString("bezug").ifBlank { null })
+                }.filter { it.text.isNotBlank() },
+                vorlageHinweis = hinweis?.optString("vorlage")?.takeIf { it.isNotBlank() }
+                    ?.let { it to hinweis.optString("grund") },
             )
         } catch (_: Exception) {
             null
@@ -122,6 +139,7 @@ data class Ergebnis(
 /** Die 8 Vorlagen, gleiche Kennungen wie laptop/braininger/vorlagen.py. */
 object Vorlagen {
     val alle = linkedMapOf(
+        "gedanken" to "Gedanken",
         "tagebuch" to "Tagebuch",
         "kundengespraech" to "Kundengespräch / Gig-Anfrage",
         "besprechung" to "Besprechungsprotokoll",
@@ -208,6 +226,10 @@ object ErgebnisAbruf {
             tmp.renameTo(File(a.ordner, "ergebnis.json"))
             geaendert[id]?.let { zeitDatei.writeText(it) }
             if (neu.endgueltig && alt?.status != neu.status) neuFertig += a.ordner to neu
+            if (neu.status == "fertig" && neu.vorschlaege.isNotEmpty()) {
+                AufgabenSpeicher.ausErgebnis(context, a.ordner.name,
+                    neu.vorschlaege.map { it.copy(id = "${a.ordner.name}#${it.id}", aufnahme = a.ordner.name) })
+            }
         }
         return neuFertig
     }
@@ -221,19 +243,40 @@ object ErgebnisAbruf {
         }
         val fertig = alle.filter { it.second.status == "fertig" }
         if (fertig.isEmpty()) return
-        val text = if (fertig.size == 1) fertig[0].second.kurz ?: "Die Notiz ist fertig."
-                   else "${fertig.size} Aufnahmen sind ausgewertet."
+        val aufnahmen = fertig.map { it.first.name }.toSet()
+        val vorschlaege = AufgabenSpeicher.vorschlaege(context).filter { it.aufnahme in aufnahmen }
+        val text = (if (fertig.size == 1) fertig[0].second.kurz ?: "Die Notiz ist fertig."
+                   else "${fertig.size} Aufnahmen sind ausgewertet.") +
+            vorschlaege.joinToString("") { "\n• " + it.text + (it.frist?.let { f -> " (" + AufgabenSpeicher.fristText(f) + ")" } ?: "") }
+        val titel = when (vorschlaege.size) {
+            0 -> "Ergebnis fertig"
+            1 -> "Ergebnis fertig · 1 Aufgabe"
+            else -> "Ergebnis fertig · ${vorschlaege.size} Aufgaben"
+        }
         val oeffnen = PendingIntent.getActivity(
             context, 6, Intent(context, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val n = NotificationCompat.Builder(context, "hinweise")
             .setSmallIcon(R.drawable.ic_benachrichtigung)
-            .setContentTitle("Ergebnis fertig")
+            .setContentTitle(titel)
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setContentIntent(oeffnen)
             .setAutoCancel(true)
+            .apply {
+                if (vorschlaege.isNotEmpty()) {
+                    val alle = PendingIntent.getBroadcast(
+                        context, 5,
+                        Intent(context, AufgabenAktion::class.java).setAction(AufgabenAktion.UEBERNEHMEN)
+                            .putExtra(AufgabenAktion.EXTRA_VORSCHLAEGE, vorschlaege.map { it.id }.toTypedArray())
+                            .putExtra(AufgabenAktion.EXTRA_MELDUNG, 4),
+                        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+                    )
+                    addAction(0, "ALLE ÜBERNEHMEN", alle)
+                    addAction(0, "ANSEHEN", oeffnen)
+                }
+            }
             .build()
         try {
             context.getSystemService(NotificationManager::class.java).notify(4, n)
@@ -259,7 +302,8 @@ object AudioAufraeumen {
             val stand = UploadStand.lesen(a.ordner)
             if (!stand.abgeschlossen || stand.audioGeloescht || stand.dateien.isEmpty()) continue
             if (Ergebnis.lesen(a.ordner)?.textFertig != true) continue
-            for (id in stand.dateien.values) api.loeschen(id)
+            // nur Ton: Fotos bleiben im Drive
+            for ((name, id) in stand.dateien) if (name.endsWith(".m4a")) api.loeschen(id)
             stand.audioGeloescht = true
             stand.speichern(a.ordner)
             a.ordner.listFiles { f -> f.name.endsWith(".m4a") }.orEmpty().forEach { it.delete() }
