@@ -25,6 +25,11 @@ data class Notiz(val vorlage: String, val titel: String, val inhalt: String)
 
 data class TextAbschnitt(val start: Double, val sprecher: String?, val text: String)
 
+/** Ein Sprecher im Gespräch. quelle: bestaetigt (vom Nutzer) | stimme (an der Stimme erkannt) | gespraech | leer | null */
+data class SprecherInfo(val kennung: String, val name: String?, val quelle: String?, val beispiel: String, val sprechzeitS: Int) {
+    val vermutet get() = name != null && quelle != "bestaetigt"
+}
+
 /**
  * Inhalt der ergebnis.json, die der Laptop an Ort und Stelle beschreibt (siehe laptop/braininger/ergebnis.py).
  * status: hochgeladen (noch unberührt) | in_arbeit | wartet | fertig | fehler
@@ -39,6 +44,8 @@ data class Ergebnis(
     val notizen: List<Notiz>,
     val abschnitte: List<TextAbschnitt>,
     val sprecher: Map<String, String>,
+    val sprecherDetails: List<SprecherInfo>,
+    val bekannteNamen: List<String>,
     val auftragErledigt: Int,
 ) {
     val endgueltig get() = status == "fertig" || status == "fehler"
@@ -65,6 +72,8 @@ data class Ergebnis(
             val notizen = j.optJSONArray("notizen")
             val abschnitte = j.optJSONArray("abschnitte")
             val sprecher = j.optJSONArray("sprecher")
+            val details = j.optJSONArray("sprecher_details")
+            val bekannte = j.optJSONArray("bekannte_namen")
             Ergebnis(
                 status = j.optString("status", "hochgeladen"),
                 schritt = j.optString("schritt").takeUnless { j.isNull("schritt") || it.isBlank() },
@@ -84,10 +93,21 @@ data class Ergebnis(
                         a.optString("text"),
                     )
                 },
-                sprecher = (0 until (sprecher?.length() ?: 0)).associate {
+                sprecher = (0 until (sprecher?.length() ?: 0)).mapNotNull {
                     val s = sprecher!!.getJSONObject(it)
-                    s.optString("kennung") to s.optString("name")
+                    if (s.isNull("name") || s.optString("name").isBlank()) null else s.optString("kennung") to s.optString("name")
+                }.toMap(),
+                sprecherDetails = (0 until (details?.length() ?: 0)).map {
+                    val d = details!!.getJSONObject(it)
+                    SprecherInfo(
+                        d.optString("kennung"),
+                        d.optString("name").takeUnless { d.isNull("name") || it.isBlank() },
+                        d.optString("quelle").takeUnless { d.isNull("quelle") || it.isBlank() },
+                        d.optString("beispiel"),
+                        d.optInt("sprechzeit_s", 0),
+                    )
                 },
+                bekannteNamen = (0 until (bekannte?.length() ?: 0)).map { bekannte!!.getString(it) },
                 auftragErledigt = j.optInt("auftrag_erledigt", 0),
             )
         } catch (_: Exception) {
@@ -129,16 +149,19 @@ object Auftraege {
         return j.takeIf { it.optInt("nummer") > erledigt }
     }
 
-    suspend fun vorlageAendern(context: Context, ordner: File, notiz: Int, vorlage: String) {
+    suspend fun vorlageAendern(context: Context, ordner: File, notiz: Int, vorlage: String) =
+        senden(context, ordner, JSONObject().put("art", "vorlage_aendern").put("notiz", notiz).put("vorlage", vorlage))
+
+    /** name leer = Name entfernen. */
+    suspend fun sprecherBenennen(context: Context, ordner: File, kennung: String, name: String) =
+        senden(context, ordner, JSONObject().put("art", "sprecher_benennen").put("kennung", kennung).put("name", name.trim()))
+
+    private suspend fun senden(context: Context, ordner: File, j: JSONObject) {
         val stand = UploadStand.lesen(ordner)
         val ordnerId = stand.ordnerId ?: throw IOException("Aufnahme ist noch nicht im Drive.")
         val bisher = try { JSONObject(datei(ordner).readText()).optInt("nummer") } catch (_: Exception) { 0 }
         val erledigt = Ergebnis.lesen(ordner)?.auftragErledigt ?: 0
-        val j = JSONObject()
-            .put("nummer", maxOf(bisher, erledigt) + 1)
-            .put("art", "vorlage_aendern")
-            .put("notiz", notiz)
-            .put("vorlage", vorlage)
+        j.put("nummer", maxOf(bisher, erledigt) + 1)
         val inhalt = j.toString(1).toByteArray()
         val api = DriveApi(context)
         val id = stand.auftragId ?: api.dateiFinden("auftrag.json", ordnerId)?.id

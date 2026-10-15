@@ -30,14 +30,17 @@ class Text:
     sprecher_anzahl: int | None
     stimmen: dict[str, list[float]] | None = None  # mittlerer Stimmabdruck je Sprecher (S1, S2 …)
 
-    def als_zeilen(self) -> str:
+    def als_zeilen(self, namen: dict[str, str] | None = None) -> str:
+        """namen: {"S1": "Jan"} ersetzt die Kennung durch den Namen."""
+        namen = namen or {}
         zeilen = []
         for a in self.abschnitte:
             marke = f"{int(a.start // 60):02d}:{int(a.start % 60):02d}"
             if a.pause:
                 zeilen.append(f"[{marke}] {a.text}")
             else:
-                zeilen.append(f"[{marke}] {a.sprecher + ': ' if a.sprecher else ''}{a.text}")
+                wer = namen.get(a.sprecher, a.sprecher) if a.sprecher else None
+                zeilen.append(f"[{marke}] {wer + ': ' if wer else ''}{a.text}")
         return "\n".join(zeilen)
 
 
@@ -137,9 +140,18 @@ def erkennen(audio: np.ndarray, gespraech: bool, fortschritt: Callable[[str, flo
     dauer = len(audio) / E.ABTASTRATE
     sprecher_stuecke: list = []
     abdruecke: dict = {}
+    eigene_stimme = None
     if gespraech and dauer > 0:
         fortschritt("sprecher", 0.0)
         sprecher_stuecke, abdruecke = sprecher.trennen(audio)
+    elif dauer > 0:
+        # Beim Gedanken spricht der Nutzer allein: seine Stimme lernen (größte Gruppe, ab 10 s Sprache)
+        stuecke, mitten = sprecher.trennen(audio)
+        anteile: dict[int, float] = {}
+        for s in stuecke:
+            anteile[s.speaker] = anteile.get(s.speaker, 0) + s.end - s.start
+        if anteile and max(anteile.values()) >= 10:
+            eigene_stimme = mitten.get(max(anteile, key=anteile.get))
 
     fortschritt("text", 0.0)
     bloecke = sprechbloecke(audio) if dauer > 0 else []
@@ -195,6 +207,7 @@ def erkennen(audio: np.ndarray, gespraech: bool, fortschritt: Callable[[str, flo
         sprache=sprache,
         sprache_sicherheit=round(sicherheit.get(sprache, 0.0), 2),
         sprecher_anzahl=len(reihenfolge) if gespraech else None,
-        stimmen={name: [round(float(x), 5) for x in abdruecke[nr]] for nr, name in reihenfolge.items()
-                 if nr in abdruecke} or None,
+        stimmen=({name: [round(float(x), 5) for x in abdruecke[nr]] for nr, name in reihenfolge.items()
+                  if nr in abdruecke} if gespraech else
+                 {"ich": [round(float(x), 5) for x in eigene_stimme]} if eigene_stimme is not None else None) or None,
     )

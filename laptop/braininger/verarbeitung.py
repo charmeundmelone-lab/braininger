@@ -4,13 +4,14 @@ Der lokale Zustand (daten/aufnahmen/<id>/zustand.json) merkt sich, wie weit eine
 Ist der Text einmal gesichert, wird er bei einem neuen Versuch (z. B. nach einem Claude-Limit) nicht neu erkannt.
 """
 import json
+import re
 import logging
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import auswertung, ergebnis, notizdateien
+from . import auswertung, ergebnis, notizdateien, stimmen
 from .aufnahme import Aufnahme, zusammenfuegen
 from .claude_aufruf import ClaudeFehler, ClaudeLimitErreicht
 from .einstellungen import AUFNAHMEN_LOKAL
@@ -122,6 +123,8 @@ class Bearbeitung:
             "rechenzeit_s": round(dauer, 1),
         }, ensure_ascii=False, indent=1))
         ergebnis.lokal_schreiben(self.lokal / "text.txt", text.als_zeilen())
+        if self.a.modus != "gespraech" and text.stimmen and text.stimmen.get("ich"):
+            stimmen.lernen(auswertung.eigener_name(), text.stimmen["ich"])
 
         self.daten.update(
             text_fertig=True,
@@ -133,6 +136,41 @@ class Bearbeitung:
         self.zustand.status = "text_fertig"
         self.speichern()
         return text
+
+    def _sprecher_namen(self, text: Text) -> dict[str, str]:
+        """Namen je Kennung: vom Nutzer bestätigt, sonst an der Stimme erkannt. Füllt daten["sprecher_details"]."""
+        if self.a.modus != "gespraech" or not text.stimmen:
+            return {}
+        alt = {d["kennung"]: d for d in self.daten.get("sprecher_details") or []}
+        fest = {k: d["name"] for k, d in alt.items() if d.get("quelle") == "bestaetigt" and d.get("name")}
+        ohne_name = {k for k, d in alt.items() if d.get("quelle") == "leer"}  # Nutzer hat den Namen entfernt
+        erkannt = stimmen.zuordnen({k: v for k, v in text.stimmen.items() if k not in ohne_name}, fest)
+        details = []
+        for kennung in text.stimmen:
+            teile = [a for a in text.abschnitte if a.sprecher == kennung and not a.pause]
+            beispiel = max((a.text for a in teile), key=len, default="")
+            eintrag = {"kennung": kennung, "name": None, "quelle": None, "aehnlichkeit": None,
+                       "beispiel": beispiel[:120], "sprechzeit_s": round(sum(a.ende - a.start for a in teile))}
+            if kennung in fest:
+                eintrag.update(name=fest[kennung], quelle="bestaetigt")
+            elif kennung in ohne_name:
+                eintrag.update(quelle="leer")
+            elif kennung in erkannt:
+                eintrag.update(name=erkannt[kennung][0], quelle="stimme", aehnlichkeit=erkannt[kennung][1])
+            details.append(eintrag)
+        self.daten["sprecher_details"] = details
+        self.daten["bekannte_namen"] = stimmen.namen()
+        return {d["kennung"]: d["name"] for d in details if d["name"]}
+
+    def _sprecher_melden(self, namen: dict[str, str], von_claude: list[dict]) -> None:
+        """sprecher = nur benannte (so liest es auch die App bis 0.1.11), dazu Namen, die Claude aus dem Inhalt kennt."""
+        details = {d["kennung"]: d for d in self.daten.get("sprecher_details") or []}
+        for s in von_claude:
+            k, n = s.get("kennung", ""), (s.get("name") or "").strip()
+            if re.fullmatch(r"S\d+", k) and n and k not in namen and k in details:
+                details[k].update(name=n, quelle="gespraech")
+                namen[k] = n
+        self.daten["sprecher"] = [{"kennung": k, "name": n} for k, n in sorted(namen.items())]
 
     def _notizen_ablegen(self, notizen: list[dict]) -> None:
         """Jede Notiz zusätzlich als Markdown-Datei, zum Lesen am Laptop."""
@@ -155,11 +193,14 @@ class Bearbeitung:
 
             self._fortschritt("auswertung", 0.0)
             dauer = self.daten.get("dauer_audio_s") or float(self.a.dauer_s or 0)
-            antwort = auswertung.auswerten(text, self.a.modus, self.a.start, dauer, self.daten.get("hinweise", []))
+            namen = self._sprecher_namen(text)
+            antwort = auswertung.auswerten(text, self.a.modus, self.a.start, dauer, self.daten.get("hinweise", []),
+                                           namen)
             self._notizen_ablegen(antwort["notizen"])
+            self._sprecher_melden(namen, antwort.get("sprecher", []))
             self.daten.update(
                 status="fertig", schritt=None, fortschritt=1.0, meldung=None, weiter_ab=None,
-                kurz=antwort["kurz"], notizen=antwort["notizen"], sprecher=antwort.get("sprecher", []),
+                kurz=antwort["kurz"], notizen=antwort["notizen"],
             )
             self.zustand.status, self.zustand.meldung = "fertig", None
             log.info("%s: fertig, %d Notiz(en): %s", self.a.id, len(antwort["notizen"]),
@@ -190,24 +231,55 @@ class Bearbeitung:
             return None
         return j
 
+    def _sprecher_benennen(self, text: Text, nummer: int, kennung: str, name: str) -> None:
+        """Nutzer gibt einem Sprecher in der App einen Namen (leer = Name entfernen). Stimme merken, Notizen neu."""
+        name = name.strip()[:60]
+        details = self.daten.get("sprecher_details") or []
+        eintrag = next((d for d in details if d["kennung"] == kennung), None)
+        if eintrag is None:
+            raise ValueError(f"Sprecher {kennung} gibt es in dieser Aufnahme nicht.")
+        for d in details:  # ein Name gehört zu genau einem Sprecher dieser Aufnahme
+            if name and d is not eintrag and (d.get("name") or "").casefold() == name.casefold():
+                d.update(name=None, quelle=None, aehnlichkeit=None)
+        eintrag.update(name=name or None, quelle="bestaetigt" if name else "leer", aehnlichkeit=None)
+        if name and text.stimmen and text.stimmen.get(kennung):
+            stimmen.lernen(name, text.stimmen[kennung])
+        log.info("%s: Auftrag %d, %s heißt %s", self.a.id, nummer, kennung, name or "(kein Name)")
+
+        self.daten.update(status="in_arbeit", schritt="auswertung", fortschritt=0.0)
+        self.speichern()
+        # bestätigte Namen bleiben, für die übrigen wird mit der neu gelernten Stimme noch einmal gesucht
+        namen = self._sprecher_namen(text)
+        dauer = self.daten.get("dauer_audio_s") or float(self.a.dauer_s or 0)
+        antwort = auswertung.auswerten(text, self.a.modus, self.a.start, dauer, self.daten.get("hinweise", []), namen)
+        self._notizen_ablegen(antwort["notizen"])
+        self._sprecher_melden(namen, antwort.get("sprecher", []))
+        self.daten.update(kurz=antwort["kurz"], notizen=antwort["notizen"])
+
     def auftrag_ausfuehren(self, auftrag: dict) -> None:
         nummer = int(auftrag.get("nummer", 0))
         meldung = None
         try:
-            if auftrag.get("art") != "vorlage_aendern":
-                raise ValueError(f"Unbekannter Auftrag {auftrag.get('art')!r}")
-            index, vorlage = int(auftrag["notiz"]), str(auftrag["vorlage"])
-            if vorlage not in NACH_KENNUNG or not 0 <= index < len(self.daten["notizen"]):
-                raise ValueError("Auftrag passt nicht zu den Notizen.")
+            art = auftrag.get("art")
             text = self._gesicherter_text()
             if text is None:
                 raise ValueError("Der Text dieser Aufnahme ist am Laptop nicht mehr da.")
-            self.daten.update(status="in_arbeit", schritt="auswertung", fortschritt=0.0)
-            self.speichern()
-            log.info("%s: Auftrag %d, Notiz %d → Vorlage %s", self.a.id, nummer, index, vorlage)
-            neu = auswertung.vorlage_aendern(text, self.a.modus, self.a.start, self.daten["notizen"][index], vorlage)
-            self.daten["notizen"][index] = neu
-            self._notizen_ablegen(self.daten["notizen"])
+            namen = {s["kennung"]: s["name"] for s in self.daten.get("sprecher") or [] if s.get("name")}
+            if art == "vorlage_aendern":
+                index, vorlage = int(auftrag["notiz"]), str(auftrag["vorlage"])
+                if vorlage not in NACH_KENNUNG or not 0 <= index < len(self.daten["notizen"]):
+                    raise ValueError("Auftrag passt nicht zu den Notizen.")
+                self.daten.update(status="in_arbeit", schritt="auswertung", fortschritt=0.0)
+                self.speichern()
+                log.info("%s: Auftrag %d, Notiz %d → Vorlage %s", self.a.id, nummer, index, vorlage)
+                neu = auswertung.vorlage_aendern(text, self.a.modus, self.a.start, self.daten["notizen"][index],
+                                                 vorlage, namen)
+                self.daten["notizen"][index] = neu
+                self._notizen_ablegen(self.daten["notizen"])
+            elif art == "sprecher_benennen":
+                self._sprecher_benennen(text, nummer, str(auftrag.get("kennung", "")), str(auftrag.get("name") or ""))
+            else:
+                raise ValueError(f"Unbekannter Auftrag {art!r}")
         except ClaudeLimitErreicht as e:
             weiter = datetime.now().astimezone() + LIMIT_PAUSE
             log.warning("%s: Claude-Limit beim Auftrag, neuer Versuch ab %s (%s)", self.a.id, f"{weiter:%H:%M}", e)

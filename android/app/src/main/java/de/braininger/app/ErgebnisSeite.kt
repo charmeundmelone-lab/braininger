@@ -17,7 +17,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -39,6 +43,7 @@ import de.braininger.app.drive.AnmeldungNoetig
 import de.braininger.app.drive.Auftraege
 import de.braininger.app.drive.Ergebnis
 import de.braininger.app.drive.Notiz
+import de.braininger.app.drive.SprecherInfo
 import de.braininger.app.drive.Vorlagen
 import de.braininger.app.ui.Grau
 import de.braininger.app.ui.Linie
@@ -49,7 +54,7 @@ import de.braininger.app.ui.Weiss
 import kotlinx.coroutines.launch
 import java.util.Locale
 
-/** Notizen und Text einer Aufnahme. Vorlage einer Notiz per Tipp ändern. */
+/** Notizen und Text einer Aufnahme. Vorlage einer Notiz per Tipp ändern, Sprechern Namen geben. */
 @Composable
 fun ErgebnisSeite(aufnahme: Aufnahme, ergebnis: Ergebnis?, aktualisierung: Int, zurueck: () -> Unit) {
     BackHandler(onBack = zurueck)
@@ -57,6 +62,7 @@ fun ErgebnisSeite(aufnahme: Aufnahme, ergebnis: Ergebnis?, aktualisierung: Int, 
     val scope = rememberCoroutineScope()
     var zeigeText by remember { mutableStateOf(false) }
     var vorlageWahl by remember { mutableStateOf<Int?>(null) }
+    var sprecherWahl by remember { mutableStateOf<SprecherInfo?>(null) }
     var meldung by remember { mutableStateOf<String?>(null) }
     val offenerAuftrag = remember(aktualisierung, ergebnis) { Auftraege.offen(aufnahme.ordner) }
 
@@ -86,9 +92,20 @@ fun ErgebnisSeite(aufnahme: Aufnahme, ergebnis: Ergebnis?, aktualisierung: Int, 
             ergebnis.status == "fehler" -> Text("Fehler am Laptop: ${ergebnis.meldung ?: "unbekannt"}", color = Rot, fontSize = 14.sp)
         }
         if (offenerAuftrag != null) {
-            Text("Laptop schreibt die Notiz mit neuer Vorlage …", color = Grau, fontSize = 13.sp)
+            Text("Laptop schreibt die Notizen neu …", color = Grau, fontSize = 13.sp)
         }
         meldung?.let { Text(it, color = Rot, fontSize = 13.sp) }
+
+        if (ergebnis != null && ergebnis.endgueltig && ergebnis.sprecherDetails.isNotEmpty()) {
+            Spacer(Modifier.height(4.dp))
+            Text("SPRECHER · ANTIPPEN ZUM BENENNEN", color = Grau, fontSize = 11.sp, letterSpacing = 1.5.sp)
+            Row(Modifier.horizontalScroll(rememberScrollState()).padding(vertical = 6.dp)) {
+                ergebnis.sprecherDetails.forEach { s ->
+                    SprecherChip(s, aktiv = offenerAuftrag == null) { sprecherWahl = s }
+                    Spacer(Modifier.width(8.dp))
+                }
+            }
+        }
 
         if (ergebnis != null && (ergebnis.notizen.isNotEmpty() || ergebnis.abschnitte.isNotEmpty())) {
             Row(Modifier.padding(vertical = 8.dp)) {
@@ -115,6 +132,22 @@ fun ErgebnisSeite(aufnahme: Aufnahme, ergebnis: Ergebnis?, aktualisierung: Int, 
                     }
                 }
                 item { Spacer(Modifier.height(24.dp)) }
+            }
+        }
+    }
+
+    sprecherWahl?.let { s ->
+        SprecherDialog(s, ergebnis?.bekannteNamen.orEmpty(), schliessen = { sprecherWahl = null }) { name ->
+            sprecherWahl = null
+            meldung = null
+            scope.launch {
+                try {
+                    Auftraege.sprecherBenennen(context, aufnahme.ordner, s.kennung, name)
+                } catch (e: AnmeldungNoetig) {
+                    meldung = "Erst bei Google anmelden."
+                } catch (e: Exception) {
+                    meldung = "Auftrag nicht gesendet: ${e.message}"
+                }
             }
         }
     }
@@ -152,6 +185,74 @@ fun ErgebnisSeite(aufnahme: Aufnahme, ergebnis: Ergebnis?, aktualisierung: Int, 
             containerColor = androidx.compose.ui.graphics.Color(0xFF111111),
         )
     }
+}
+
+@Composable
+private fun SprecherChip(s: SprecherInfo, aktiv: Boolean, onClick: () -> Unit) {
+    val titel = when {
+        s.name == null -> "${s.kennung} · ?"
+        s.vermutet -> "${s.name}?"
+        else -> s.name ?: s.kennung
+    }
+    Column(
+        Modifier
+            .width(170.dp)
+            .border(1.dp, if (s.name != null && !s.vermutet) Weiss else Linie, RoundedCornerShape(16.dp))
+            .clickable(enabled = aktiv, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    ) {
+        Text(titel, color = Weiss, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        Text("„${s.beispiel}“", color = Grau, fontSize = 12.sp, maxLines = 2)
+        Text(if (s.vermutet) "an der Stimme erkannt · ${s.sprechzeitS} s" else "${s.sprechzeitS} s",
+             color = Grau, fontSize = 10.sp)
+    }
+}
+
+/** Name eingeben oder einen bekannten antippen. Leer speichern = Name entfernen. */
+@Composable
+private fun SprecherDialog(s: SprecherInfo, bekannte: List<String>, schliessen: () -> Unit, speichern: (String) -> Unit) {
+    var name by remember { mutableStateOf(s.name ?: "") }
+    AlertDialog(
+        onDismissRequest = schliessen,
+        title = { Text("Wer spricht hier?") },
+        text = {
+            Column {
+                Text("„${s.beispiel}“", color = Grau, fontSize = 14.sp)
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = name, onValueChange = { name = it.take(60) }, singleLine = true,
+                    label = { Text("Name") },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Weiss, unfocusedTextColor = Weiss,
+                        focusedBorderColor = Weiss, unfocusedBorderColor = Linie,
+                        focusedLabelColor = Grau, unfocusedLabelColor = Grau, cursorColor = Weiss,
+                    ),
+                )
+                if (bekannte.isNotEmpty()) {
+                    Spacer(Modifier.height(8.dp))
+                    Text("BEKANNT", color = Grau, fontSize = 11.sp, letterSpacing = 1.5.sp)
+                    Row(Modifier.horizontalScroll(rememberScrollState())) {
+                        bekannte.forEach { b ->
+                            Text(
+                                b, color = if (b == name) Schwarz else Weiss, fontSize = 14.sp,
+                                modifier = Modifier
+                                    .padding(end = 6.dp, top = 6.dp)
+                                    .background(if (b == name) Weiss else Schwarz, RoundedCornerShape(14.dp))
+                                    .border(1.dp, Linie, RoundedCornerShape(14.dp))
+                                    .clickable { name = b }
+                                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { speichern(name) }) { Text(if (name.isBlank()) "OHNE NAMEN" else "SPEICHERN") }
+        },
+        dismissButton = { TextButton(onClick = schliessen) { Text("Abbrechen") } },
+        containerColor = androidx.compose.ui.graphics.Color(0xFF111111),
+    )
 }
 
 @Composable

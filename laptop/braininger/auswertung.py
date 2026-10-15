@@ -84,26 +84,39 @@ def _vorlagen_text() -> str:
     return "\n\n".join(teile)
 
 
-def prompt_bauen(text: Text, modus: str, start: str, dauer_s: float, hinweise: list[str]) -> str:
+def eigener_name() -> str:
+    try:
+        return json.loads(PERSOENLICH.read_text(encoding="utf-8")).get("name") or "ich"
+    except (OSError, ValueError):
+        return "ich"
+
+
+def prompt_bauen(text: Text, modus: str, start: str, dauer_s: float, hinweise: list[str],
+                 namen: dict[str, str] | None = None) -> str:
+    """namen: {"S1": "Jan"} – im Text werden die Kennungen durch die Namen ersetzt."""
     kopf = [
         f"Aufnahme vom {start}, Dauer {dauer_s / 60:.1f} min, Modus „{modus}“, erkannte Sprache „{text.sprache}“.",
     ]
     if text.sprecher_anzahl is not None:
         kopf.append(f"Erkannte Sprecher: {text.sprecher_anzahl} (S1 spricht zuerst).")
+    if namen:
+        kopf.append("Namen der Sprecher (an der Stimme erkannt oder vom Nutzer festgelegt), im Text schon eingesetzt: "
+                    + ", ".join(f"{k} = {v}" for k, v in sorted(namen.items())) + ".")
     if hinweise:
         kopf.append("Hinweise: " + " ".join(hinweise))
     return (
         "# Vorlagen\n\n" + _vorlagen_text()
         + "\n\n# Aufnahme\n\n" + "\n".join(kopf)
-        + "\n\n# Text\n\n" + (text.als_zeilen() or "(kein Text erkannt)")
+        + "\n\n# Text\n\n" + (text.als_zeilen(namen) or "(kein Text erkannt)")
         + "\n\nSchreib jetzt die Notiz(en)."
     )
 
 
-def auswerten(text: Text, modus: str, start: str, dauer_s: float, hinweise: list[str]) -> dict:
+def auswerten(text: Text, modus: str, start: str, dauer_s: float, hinweise: list[str],
+              namen: dict[str, str] | None = None) -> dict:
     """Wirft claude_aufruf.ClaudeLimitErreicht, wenn das Abo-Limit erreicht ist."""
     antwort = claude_aufruf.frage(
-        prompt_bauen(text, modus, start, dauer_s, hinweise),
+        prompt_bauen(text, modus, start, dauer_s, hinweise, namen),
         zeitlimit_s=900,
         system_prompt=_system_prompt(),
         json_schema=SCHEMA,
@@ -119,7 +132,8 @@ def auswerten(text: Text, modus: str, start: str, dauer_s: float, hinweise: list
     return daten
 
 
-def vorlage_aendern(text: Text, modus: str, start: str, notiz: dict, vorlage: str) -> dict:
+def vorlage_aendern(text: Text, modus: str, start: str, notiz: dict, vorlage: str,
+                   namen: dict[str, str] | None = None) -> dict:
     """Schreibt eine einzelne Notiz mit einer vom Nutzer gewählten Vorlage neu (Tipp in der App)."""
     von, bis = float(notiz.get("von_s", 0)), float(notiz.get("bis_s", 0))
     teil = [a for a in text.abschnitte if bis <= von or (a.ende > von - 1 and a.start < bis + 1)]
@@ -136,7 +150,7 @@ def vorlage_aendern(text: Text, modus: str, start: str, notiz: dict, vorlage: st
         + f"\n\n# Aufgabe\n\nDer Nutzer hat in der App festgelegt: Diese Notiz soll nach der Vorlage „{v.kennung}“ "
         f"({v.name}) geschrieben werden. Schreib sie nach dieser Vorlage neu. Setz „vorlage“ auf „{v.kennung}“.\n\n"
         f"Bisherige Notiz („{notiz.get('vorlage')}“): {notiz.get('titel')}\n\n"
-        f"# Aufnahme\n\nAufnahme vom {start}, Modus „{modus}“.\n\n# Text\n\n" + auszug.als_zeilen()
+        f"# Aufnahme\n\nAufnahme vom {start}, Modus „{modus}“.\n\n# Text\n\n" + auszug.als_zeilen(namen)
     )
     antwort = claude_aufruf.frage(prompt, zeitlimit_s=600, system_prompt=_system_prompt(), json_schema=schema,
                                   arbeitsordner=CLAUDE_ARBEITSORDNER)
