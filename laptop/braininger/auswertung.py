@@ -24,6 +24,10 @@ Regeln:
   („Ich bin müde …“, „Ich will morgen …“). Im Modus „gespraech“ schreibst du in der dritten Person und nennst
   {name} beim Namen, damit klar ist, wer was gesagt hat („{name} bietet an …, S2 fragt …“).
 - „[Pause …]“ im Text steht für eine lange Stille. Danach beginnt oft ein neues Thema; prüfe, ob eine eigene Notiz passt.
+- Sprachmarke „Wichtig“: Sagt {name} „wichtig“ als Ansage, um etwas hervorzuheben („Wichtig: …“, „Das ist wichtig: …“,
+  „Ganz wichtig …“), ist der Gedanke direkt danach markiert. Nicht gemeint ist „wichtig“ als gewöhnliches Wort im Satz
+  („das war mir wichtig“). Jede markierte Stelle kommt in der passenden Notiz ganz nach oben unter „## Wichtig“
+  und zusätzlich ins Feld „wichtig“ (mit Zeit in Sekunden). Ohne Sprachmarke bleibt „wichtig“ leer.
 - Aufgaben schreibst du als Markdown-Checkliste „- [ ] …“ mit Frist, falls genannt.
 - Ist die Aufnahme leer, unverständlich oder nur Rauschen, schreib eine einzige kurze Notiz mit Vorlage „tagebuch“
   und dem Titel „Kein verwertbarer Inhalt“.
@@ -60,8 +64,18 @@ SCHEMA = {
                 "additionalProperties": False,
             },
         },
+        "wichtig": {
+            "type": "array",
+            "description": "Stellen, die der Nutzer mit der Sprachmarke „wichtig“ hervorgehoben hat.",
+            "items": {
+                "type": "object",
+                "properties": {"zeit_s": {"type": "number"}, "text": {"type": "string", "description": "kurz, ein Satz"}},
+                "required": ["zeit_s", "text"],
+                "additionalProperties": False,
+            },
+        },
     },
-    "required": ["kurz", "notizen", "sprecher"],
+    "required": ["kurz", "notizen", "sprecher", "wichtig"],
     "additionalProperties": False,
 }
 

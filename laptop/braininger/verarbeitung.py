@@ -200,7 +200,7 @@ class Bearbeitung:
             self._sprecher_melden(namen, antwort.get("sprecher", []))
             self.daten.update(
                 status="fertig", schritt=None, fortschritt=1.0, meldung=None, weiter_ab=None,
-                kurz=antwort["kurz"], notizen=antwort["notizen"],
+                kurz=antwort["kurz"], notizen=antwort["notizen"], wichtig=antwort.get("wichtig", []),
             )
             self.zustand.status, self.zustand.meldung = "fertig", None
             log.info("%s: fertig, %d Notiz(en): %s", self.a.id, len(antwort["notizen"]),
@@ -254,7 +254,7 @@ class Bearbeitung:
         antwort = auswertung.auswerten(text, self.a.modus, self.a.start, dauer, self.daten.get("hinweise", []), namen)
         self._notizen_ablegen(antwort["notizen"])
         self._sprecher_melden(namen, antwort.get("sprecher", []))
-        self.daten.update(kurz=antwort["kurz"], notizen=antwort["notizen"])
+        self.daten.update(kurz=antwort["kurz"], notizen=antwort["notizen"], wichtig=antwort.get("wichtig", []))
 
     def auftrag_ausfuehren(self, auftrag: dict) -> None:
         nummer = int(auftrag.get("nummer", 0))
