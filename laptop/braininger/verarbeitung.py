@@ -90,7 +90,8 @@ class Bearbeitung:
             j = json.loads((self.lokal / "text.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return None
-        return Text([Abschnitt(**x) for x in j["abschnitte"]], j["sprache"], j["sprache_sicherheit"], j["sprecher_anzahl"])
+        return Text([Abschnitt(**x) for x in j["abschnitte"]], j["sprache"], j["sprache_sicherheit"], j["sprecher_anzahl"],
+                    j.get("stimmen"))
 
     def _text_holen(self, fehlende: list[str]) -> Text:
         datei = self.lokal / "text.json"
@@ -116,6 +117,7 @@ class Bearbeitung:
             "sprache": text.sprache,
             "sprache_sicherheit": text.sprache_sicherheit,
             "sprecher_anzahl": text.sprecher_anzahl,
+            "stimmen": text.stimmen,
             "dauer_audio_s": round(audio.dauer_s, 1),
             "rechenzeit_s": round(dauer, 1),
         }, ensure_ascii=False, indent=1))

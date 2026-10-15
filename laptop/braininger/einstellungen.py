@@ -22,15 +22,16 @@ NOTIZEN = Path(os.environ.get("BRAININGER_NOTIZEN", PROJEKT.parent / "Braininger
 
 MODELLE = Path(os.environ.get("BRAININGER_MODELLE", PROJEKT / "modelle"))
 WHISPER_MODELL = MODELLE / "whisper-large-v3-turbo"
-SEGMENTIERUNG_MODELL = MODELLE / "sherpa-onnx-pyannote-segmentation-3-0" / "model.onnx"
-STIMMEN_MODELL = MODELLE / "3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
+# Stimmabdrücke: am 15.10.2026 gegen campplus_en, wespeaker resnet34 und titanet_small verglichen,
+# eres2netv2 trennt kurze deutsche Sätze am deutlichsten (AUC 0,999 statt 0,62 beim alten Modell).
+STIMMEN_MODELL = MODELLE / "3dspeaker_speech_eres2netv2_sv_zh-cn_16k-common.onnx"
 
 # Gemessen am 14.10.2026 (Tempotest): turbo, beam 1, int8, 8 Threads ≈ 0,76x Echtzeit
 # 15.10.2026, 3 min Hörtext: 4 Threads 0,40–0,42x, 5: 0,42x, 6: 0,42x, 8: 0,47x, 12: 0,53x, 3: 0,82x.
 # Der i5-12450H hat 4 schnelle Kerne; mehr Threads landen auf den sparsamen Kernen und bremsen.
 THREADS = 4
 WHISPER_BEAM = 1
-SPRECHER_SCHWELLE = 0.9  # 0,9–0,95 lag richtig, 0,5 fand 4 Sprecher bei einer Stimme
+SPRECHER_SCHWELLE = 0.30  # Ähnlichkeit, ab der Gruppen zusammengelegt werden; 0,25–0,35 trafen in Tests 100 %
 
 ABTASTRATE = 16000
 PAUSE_AB_S = 30  # längere Stille: Aufnahme dort teilen und im Text als [Pause …] markieren

@@ -28,6 +28,7 @@ class Text:
     sprache: str
     sprache_sicherheit: float
     sprecher_anzahl: int | None
+    stimmen: dict[str, list[float]] | None = None  # mittlerer Stimmabdruck je Sprecher (S1, S2 …)
 
     def als_zeilen(self) -> str:
         zeilen = []
@@ -38,23 +39,6 @@ class Text:
             else:
                 zeilen.append(f"[{marke}] {a.sprecher + ': ' if a.sprecher else ''}{a.text}")
         return "\n".join(zeilen)
-
-
-def sprecher_trennen(audio: np.ndarray) -> list:
-    import sherpa_onnx
-
-    config = sherpa_onnx.OfflineSpeakerDiarizationConfig(
-        segmentation=sherpa_onnx.OfflineSpeakerSegmentationModelConfig(
-            pyannote=sherpa_onnx.OfflineSpeakerSegmentationPyannoteModelConfig(model=str(E.SEGMENTIERUNG_MODELL)),
-            num_threads=E.THREADS,
-        ),
-        embedding=sherpa_onnx.SpeakerEmbeddingExtractorConfig(model=str(E.STIMMEN_MODELL), num_threads=E.THREADS),
-        clustering=sherpa_onnx.FastClusteringConfig(num_clusters=-1, threshold=E.SPRECHER_SCHWELLE),
-        min_duration_on=0.3,
-        min_duration_off=0.5,
-    )
-    sd = sherpa_onnx.OfflineSpeakerDiarization(config)
-    return list(sd.process(audio).sort_by_start_time())
 
 
 def _sprecher_fuer(start: float, ende: float, stuecke: list) -> int | None:
@@ -86,19 +70,80 @@ def sprechbloecke(audio: np.ndarray) -> list[tuple[float, float]]:
     return [(a, b) for a, b in bloecke]
 
 
+def _naechster_sprecher(start: float, ende: float, stuecke: list) -> int | None:
+    """Wie _sprecher_fuer, aber ohne Überlappung der zeitlich nächste Sprecher (Wort in einer kurzen Lücke)."""
+    nummer = _sprecher_fuer(start, ende, stuecke)
+    if nummer is not None or not stuecke:
+        return nummer
+    mitte = (start + ende) / 2
+    return min(stuecke, key=lambda s: min(abs(s.start - mitte), abs(s.end - mitte))).speaker
+
+
+MIN_WECHSEL_S = 0.6  # kürzere Wortgruppen bleiben beim Nachbarn (einzelnes „Ja,“ springt sonst hin und her)
+
+
+def _nach_sprechern(segment, versatz: float, stuecke: list) -> list[tuple[float, float, str, int | None]]:
+    """Teilt ein Whisper-Segment an Sprecherwechseln, Wort für Wort (braucht word_timestamps)."""
+    woerter = [w for w in (segment.words or []) if w.word.strip()]
+    if not woerter:  # ohne Wortzeiten: ganzes Segment
+        s, e = segment.start + versatz, segment.end + versatz
+        return [(s, e, segment.text.strip(), _naechster_sprecher(s, e, stuecke))]
+    teile: list[list] = []
+    for w in woerter:
+        nummer = _naechster_sprecher(w.start + versatz, w.end + versatz, stuecke)
+        if teile and teile[-1][3] == nummer:
+            teile[-1][1] = w.end + versatz
+            teile[-1][2] += w.word
+        else:
+            teile.append([w.start + versatz, w.end + versatz, w.word, nummer])
+    # zu kurze Wortgruppen dem längeren Nachbarn zuschlagen
+    k = 0
+    while len(teile) > 1 and k < len(teile):
+        s, e, txt, n = teile[k]
+        if e - s < MIN_WECHSEL_S:
+            if k == 0:
+                nachbar = 1
+            elif k == len(teile) - 1:
+                nachbar = k - 1
+            else:
+                vor, nach = teile[k - 1], teile[k + 1]
+                nachbar = k - 1 if vor[1] - vor[0] >= nach[1] - nach[0] else k + 1
+            z = teile[nachbar]
+            if nachbar < k:
+                z[1], z[2] = e, z[2] + txt
+            else:
+                z[0], z[2] = s, txt + z[2]
+            del teile[k]
+            # gleiche Sprecher, die jetzt nebeneinander stehen, zusammenlegen
+            j = 1
+            while j < len(teile):
+                if teile[j][3] == teile[j - 1][3]:
+                    teile[j - 1][1], teile[j - 1][2] = teile[j][1], teile[j - 1][2] + teile[j][2]
+                    del teile[j]
+                else:
+                    j += 1
+            k = 0
+            continue
+        k += 1
+    return [(s, e, txt.strip(), n) for s, e, txt, n in teile if txt.strip()]
+
+
 def erkennen(audio: np.ndarray, gespraech: bool, fortschritt: Callable[[str, float], None] = lambda s, p: None) -> Text:
     """fortschritt(schritt, anteil 0..1) wird zwischendurch aufgerufen, für die Statusanzeige in der App."""
     from faster_whisper import WhisperModel
 
+    from . import sprecher
+
     dauer = len(audio) / E.ABTASTRATE
-    sprecher_stuecke = []
+    sprecher_stuecke: list = []
+    abdruecke: dict = {}
     if gespraech and dauer > 0:
         fortschritt("sprecher", 0.0)
-        sprecher_stuecke = sprecher_trennen(audio)
+        sprecher_stuecke, abdruecke = sprecher.trennen(audio)
 
     fortschritt("text", 0.0)
     bloecke = sprechbloecke(audio) if dauer > 0 else []
-    roh = []  # (start, ende, text) oder (start, ende, None) für eine Pause
+    roh = []  # (start, ende, text, sprecher-nummer) oder (start, ende, None, None) für eine Pause
     sprachen: dict[str, float] = {}  # Sprache -> gesprochene Sekunden
     sicherheit: dict[str, float] = {}
     if bloecke:
@@ -107,19 +152,24 @@ def erkennen(audio: np.ndarray, gespraech: bool, fortschritt: Callable[[str, flo
             for i, (b_start, b_ende) in enumerate(bloecke):
                 if i > 0:
                     vorher = bloecke[i - 1][1]
-                    roh.append((vorher, b_start, None))
+                    roh.append((vorher, b_start, None, None))
                 # Jeder Block einzeln, damit Whisper nichts über eine lange Pause hinweg zusammenklebt
                 von = max(0, int((b_start - 0.5) * E.ABTASTRATE))
                 bis = min(len(audio), int((b_ende + 0.5) * E.ABTASTRATE))
                 versatz = von / E.ABTASTRATE
-                segmente, info = modell.transcribe(audio[von:bis], beam_size=E.WHISPER_BEAM, vad_filter=True)
+                # Bei Gesprächen Zeiten je Wort, damit ein Satz am Sprecherwechsel geteilt werden kann
+                segmente, info = modell.transcribe(audio[von:bis], beam_size=E.WHISPER_BEAM, vad_filter=True,
+                                                   word_timestamps=gespraech)
                 laenge = (bis - von) / E.ABTASTRATE
                 for s in segmente:  # Generator: die eigentliche Arbeit passiert hier
                     text = s.text.strip()
                     # Zeilen, die über das Ende des Audios hinausreichen, hat Whisper erfunden
                     # (typisch am abgeschnittenen Ende vor einer Pause, gemessen am 15.10.2026)
                     if text and s.end <= laenge + 0.5:
-                        roh.append((s.start + versatz, s.end + versatz, text))
+                        if gespraech:
+                            roh += _nach_sprechern(s, versatz, sprecher_stuecke)
+                        else:
+                            roh.append((s.start + versatz, s.end + versatz, text, None))
                     fortschritt("text", min((s.end + versatz) / dauer, 1.0))
                 sprachen[info.language] = sprachen.get(info.language, 0) + (b_ende - b_start)
                 sicherheit.setdefault(info.language, info.language_probability)
@@ -131,17 +181,13 @@ def erkennen(audio: np.ndarray, gespraech: bool, fortschritt: Callable[[str, flo
     # Sprecher in der Reihenfolge ihres ersten Auftretens nummerieren (S1 spricht zuerst)
     reihenfolge: dict[int, str] = {}
     abschnitte = []
-    for start, ende, text in roh:
+    for start, ende, text, nummer in roh:
         if text is None:
             abschnitte.append(Abschnitt(start, ende, None, f"[Pause {_pausenzeit(ende - start)}]", pause=True))
             continue
         name = None
         if gespraech:
-            nummer = _sprecher_fuer(start, ende, sprecher_stuecke)
-            if nummer is None:
-                name = "?"
-            else:
-                name = reihenfolge.setdefault(nummer, f"S{len(reihenfolge) + 1}")
+            name = "?" if nummer is None else reihenfolge.setdefault(nummer, f"S{len(reihenfolge) + 1}")
         abschnitte.append(Abschnitt(start, ende, name, text))
 
     return Text(
@@ -149,4 +195,6 @@ def erkennen(audio: np.ndarray, gespraech: bool, fortschritt: Callable[[str, flo
         sprache=sprache,
         sprache_sicherheit=round(sicherheit.get(sprache, 0.0), 2),
         sprecher_anzahl=len(reihenfolge) if gespraech else None,
+        stimmen={name: [round(float(x), 5) for x in abdruecke[nr]] for nr, name in reihenfolge.items()
+                 if nr in abdruecke} or None,
     )
