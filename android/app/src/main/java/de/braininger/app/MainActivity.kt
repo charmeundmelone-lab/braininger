@@ -130,6 +130,7 @@ private fun Startseite(aktualisierung: Int) {
     var offen by remember { mutableStateOf<String?>(null) }
     var suche by remember { mutableStateOf("") }
     var zeigeUebersicht by remember { mutableStateOf(false) }
+    var zeigeFragen by remember { mutableStateOf(false) }
     var abrufZaehler by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
 
@@ -220,6 +221,10 @@ private fun Startseite(aktualisierung: Int) {
         UebersichtSeite { zeigeUebersicht = false }
         return
     }
+    if (zeigeFragen) {
+        FrageSeite(zurueck = { zeigeFragen = false }) { id -> zeigeFragen = false; offen = id }
+        return
+    }
     val offeneAufnahme = offen?.let { name -> aufnahmen.firstOrNull { it.ordner.name == name } }
     if (offeneAufnahme != null) {
         ErgebnisSeite(offeneAufnahme, ergebnisse[offeneAufnahme.ordner.name], aktualisierung + abrufZaehler) {
@@ -279,17 +284,9 @@ private fun Startseite(aktualisierung: Int) {
             )
         }
 
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp)
-                .border(1.dp, Linie, RoundedCornerShape(16.dp))
-                .clickable { zeigeUebersicht = true }
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("TAGESÜBERSICHT", fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Weiss, modifier = Modifier.weight(1f))
-            Text("›", color = Weiss, fontSize = 22.sp)
+        Row(Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            SeitenKnopf("ÜBERSICHT", Modifier.weight(1f)) { zeigeUebersicht = true }
+            SeitenKnopf("FRAGEN", Modifier.weight(1f)) { zeigeFragen = true }
         }
 
         Text("AUFNAHMEN", fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Grau)
@@ -427,6 +424,21 @@ private fun Hinweis(text: String, knopf: String, onClick: () -> Unit) {
     ) {
         Text(text, color = Weiss, fontSize = 13.sp, modifier = Modifier.weight(1f))
         TextButton(onClick = onClick) { Text(knopf, color = Rot, fontWeight = FontWeight.Bold) }
+    }
+}
+
+@Composable
+private fun SeitenKnopf(text: String, modifier: Modifier, onClick: () -> Unit) {
+    Row(
+        modifier
+            .border(1.dp, Linie, RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text, fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Weiss,
+             modifier = Modifier.weight(1f), maxLines = 1)
+        Text("›", color = Weiss, fontSize = 22.sp)
     }
 }
 

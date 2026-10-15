@@ -276,6 +276,7 @@ class ErgebnisAuftrag(context: Context, params: WorkerParameters) : CoroutineWor
     override suspend fun doWork(): Result = try {
         ErgebnisAbruf.benachrichtigen(applicationContext, ErgebnisAbruf.abrufen(applicationContext))
         Uebersichten.abrufen(applicationContext)
+        if (Fragen.abrufen(applicationContext)) Fragen.benachrichtigen(applicationContext)
         AudioAufraeumen.aufraeumen(applicationContext)
         Result.success()
     } catch (_: AnmeldungNoetig) {
