@@ -17,6 +17,9 @@ Regeln:
 - Halte dich an den Aufbau der Vorlage. Lass Abschnitte weg, zu denen die Aufnahme nichts sagt. Erfinde nichts.
 - Der Spracherkenner macht Hörfehler. Korrigiere offensichtliche Fehler (Namen, Fachwörter, Songtitel) stillschweigend,
   wenn der Zusammenhang eindeutig ist. Unsicheres markierst du mit (?).
+- Schlüsse, die über das Gesagte hinausgehen (z. B. wer oder was mit einem Wort gemeint ist), darfst du ziehen,
+  aber immer erkennbar als Vermutung („vermutlich …“) und getrennt vom Gesagten. Das Gesagte selbst gibst du
+  unverändert wieder.
 - Schreib auf Deutsch, knapp und konkret, in Markdown. Daten, Uhrzeiten, Beträge, Namen und Orte genau übernehmen.
 - Gesprächspartner heißen im Text S1, S2 usw. Wenn aus dem Gespräch klar hervorgeht, wer wer ist, nenne die Namen.
   Bei Aufnahmen im Modus „gedanke“ spricht {name} allein.
