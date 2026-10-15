@@ -37,6 +37,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -126,6 +128,7 @@ private fun Startseite(aktualisierung: Int) {
     var testText by remember { mutableStateOf<String?>(null) }
     var ergebnisse by remember { mutableStateOf(emptyMap<String, Ergebnis?>()) }
     var offen by remember { mutableStateOf<String?>(null) }
+    var suche by remember { mutableStateOf("") }
     var zeigeUebersicht by remember { mutableStateOf(false) }
     var abrufZaehler by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
@@ -290,15 +293,45 @@ private fun Startseite(aktualisierung: Int) {
         }
 
         Text("AUFNAHMEN", fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Grau)
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(4.dp))
+        if (aufnahmen.isNotEmpty()) {
+            OutlinedTextField(
+                value = suche, onValueChange = { suche = it.take(80) }, singleLine = true,
+                placeholder = { Text("Suchen in allen Notizen und Texten", color = Grau, fontSize = 14.sp) },
+                trailingIcon = if (suche.isNotEmpty()) {
+                    { Text("✕", color = Grau, fontSize = 16.sp, modifier = Modifier.clickable { suche = "" }.padding(8.dp)) }
+                } else null,
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Weiss, unfocusedTextColor = Weiss,
+                    focusedBorderColor = Weiss, unfocusedBorderColor = Linie, cursorColor = Weiss,
+                ),
+            )
+            Spacer(Modifier.height(4.dp))
+        }
         if (aufnahmen.isEmpty()) {
             Text("Noch keine Aufnahmen.", color = Grau, fontSize = 14.sp)
         }
+        val treffer = remember(aufnahmen, ergebnisse, suche) {
+            aufnahmen.mapNotNull { a -> Suche.treffer(a, ergebnisse[a.ordner.name], suche)?.let { a to it } }
+        }
+        if (suche.isNotBlank()) {
+            Text(
+                if (treffer.isEmpty()) "Nichts gefunden." else "${treffer.size} Treffer",
+                color = Grau, fontSize = 12.sp, modifier = Modifier.padding(vertical = 4.dp),
+            )
+        }
         LazyColumn(Modifier.weight(1f)) {
-            items(aufnahmen, key = { it.ordner.name }) { a ->
+            items(treffer, key = { it.first.ordner.name }) { (a, ausschnitt) ->
                 AufnahmeZeile(a, uploads[a.ordner.name], ergebnisse[a.ordner.name]) {
                     offen = a.ordner.name
                     ergebnisseHolen()
+                }
+                if (suche.isNotBlank() && ausschnitt.isNotBlank()) {
+                    Text(
+                        Suche.hervorheben(ausschnitt, suche), color = Grau, fontSize = 13.sp,
+                        modifier = Modifier.padding(bottom = 10.dp).clickable { offen = a.ordner.name },
+                    )
                 }
                 HorizontalDivider(color = Linie)
             }
