@@ -181,12 +181,21 @@ object ErgebnisAbruf {
     suspend fun abrufen(context: Context): List<Pair<File, Ergebnis>> {
         val api = DriveApi(context)
         val neuFertig = mutableListOf<Pair<File, Ergebnis>>()
+        // Eine Anfrage für alle: wann wurde welche ergebnis.json zuletzt geändert (z. B. Neuauswertung am Laptop)
+        val geaendert = try {
+            api.suchen("name = 'ergebnis.json' and trashed = false").associate { it.id to it.geaendert }
+        } catch (e: DriveFehler) {
+            emptyMap()
+        }
         for (a in Ablage.alle(context)) {
             val stand = UploadStand.lesen(a.ordner)
             val id = stand.ergebnisId ?: continue
             if (!stand.abgeschlossen) continue
             val alt = Ergebnis.lesen(a.ordner)
-            if (alt != null && alt.endgueltig && Auftraege.offen(a.ordner) == null) continue
+            val zeitDatei = File(a.ordner, "ergebnis_geaendert.txt")
+            val bekannt = zeitDatei.takeIf { it.exists() }?.readText()
+            val neuImDrive = geaendert[id]?.let { it.isNotBlank() && it != bekannt } ?: false
+            if (alt != null && alt.endgueltig && Auftraege.offen(a.ordner) == null && !neuImDrive) continue
 
             val inhalt = try {
                 api.herunterladen(id)
@@ -197,6 +206,7 @@ object ErgebnisAbruf {
             val tmp = File(a.ordner, "ergebnis.json.tmp")
             tmp.writeBytes(inhalt)
             tmp.renameTo(File(a.ordner, "ergebnis.json"))
+            geaendert[id]?.let { zeitDatei.writeText(it) }
             if (neu.status == "fertig" && alt?.status != "fertig") neuFertig += a.ordner to neu
         }
         return neuFertig
