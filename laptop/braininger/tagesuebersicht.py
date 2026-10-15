@@ -14,7 +14,7 @@ import logging
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from . import claude_aufruf, ergebnis
+from . import claude_aufruf, ergebnis, notizdateien
 from . import einstellungen as E
 from .auswertung import _system_prompt
 from .vorlagen import NACH_KENNUNG
@@ -157,6 +157,11 @@ def erstellen(tag: str, auftrag_nummer: int | None = None) -> None:
     _zustand_speichern(z)
     if daten["status"] == "fertig":
         log.info("Tagesübersicht %s fertig: %s", tag, daten["titel"])
+        if fertig:
+            try:
+                notizdateien.uebersicht_ablegen(tag, daten["titel"], daten["inhalt"])
+            except OSError:
+                log.exception("Tagesübersicht %s: Datei ließ sich nicht schreiben", tag)
 
 
 def _wartet(eintrag: dict) -> bool:

@@ -17,6 +17,9 @@ PROTOKOLL = DATEN / "protokoll.txt"
 PERSOENLICH = DATEN / "persoenlich.json"  # Name und Beschreibung des Nutzers für Claude
 CLAUDE_ARBEITSORDNER = DATEN / "claude_arbeitsordner"  # leer, damit Claude keine fremden Projektdateien sieht
 
+# Notizen und Tagesübersichten als lesbare Dateien, nach Monaten sortiert („Claude Projekte\Braininger Notizen“)
+NOTIZEN = Path(os.environ.get("BRAININGER_NOTIZEN", PROJEKT.parent / "Braininger Notizen"))
+
 MODELLE = Path(os.environ.get("BRAININGER_MODELLE", PROJEKT / "modelle"))
 WHISPER_MODELL = MODELLE / "whisper-large-v3-turbo"
 SEGMENTIERUNG_MODELL = MODELLE / "sherpa-onnx-pyannote-segmentation-3-0" / "model.onnx"

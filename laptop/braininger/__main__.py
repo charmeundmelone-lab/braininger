@@ -15,7 +15,7 @@ from pathlib import Path
 
 from . import aufnahme as aufnahme_modul
 from . import einstellungen as E
-from . import tagesuebersicht
+from . import notizdateien, tagesuebersicht
 from .claude_aufruf import schluessel_vorhanden
 from .verarbeitung import Bearbeitung, drive_nachtragen
 
@@ -121,6 +121,9 @@ def main() -> None:
         return
 
     log.info("Braininger %s gestartet. Eingang: %s", E.LAPTOP_VERSION, E.EINGANG)
+    nachgeholt = notizdateien.nachholen()
+    if nachgeholt:
+        log.info("Notizdateien für %d ältere Aufnahme(n) in %s angelegt", nachgeholt, E.NOTIZEN)
     while True:
         durchgang()
         if args.einmal:

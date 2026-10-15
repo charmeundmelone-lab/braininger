@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import auswertung, ergebnis
+from . import auswertung, ergebnis, notizdateien
 from .aufnahme import Aufnahme, zusammenfuegen
 from .claude_aufruf import ClaudeFehler, ClaudeLimitErreicht
 from .einstellungen import AUFNAHMEN_LOKAL
@@ -140,6 +140,10 @@ class Bearbeitung:
             vorlage = NACH_KENNUNG[n["vorlage"]].name
             kopf = f"# {n['titel']}\n\n*{vorlage} · Aufnahme {self.a.id}*\n\n"
             ergebnis.lokal_schreiben(self.lokal / f"notiz_{i}_{n['vorlage']}.md", kopf + n["inhalt"].strip() + "\n")
+        try:
+            notizdateien.ablegen(self.a.id, self.a.modus, notizen, self.lokal)
+        except (OSError, ValueError):  # der Ordner „Braininger Notizen“ ist nur eine Lesekopie
+            log.exception("%s: Notizdateien ließen sich nicht schreiben", self.a.id)
 
     def ausfuehren(self) -> None:
         self.zustand.versuche += 1
