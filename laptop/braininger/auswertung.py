@@ -31,6 +31,11 @@ Regeln:
   „Ganz wichtig …“), ist der Gedanke direkt danach markiert. Nicht gemeint ist „wichtig“ als gewöhnliches Wort im Satz
   („das war mir wichtig“). Jede markierte Stelle kommt in der passenden Notiz ganz nach oben unter „## Wichtig“
   und zusätzlich ins Feld „wichtig“ (mit Zeit in Sekunden). Ohne Sprachmarke bleibt „wichtig“ leer.
+- Markier-Knopf: Stehen unter „Markierungen“ Zeitpunkte, hat {name} während der Aufnahme auf „Markieren“ getippt.
+  Jede Markierung zählt wie die Sprachmarke „Wichtig“. Welcher Gedanke gemeint ist, entscheidest du aus dem Text:
+  meist der gerade davor gesagte (bis etwa 30 Sekunden), manchmal der direkt danach angekündigte. Liegen mehrere
+  Markierungen beim selben Gedanken, nimm ihn nur einmal. Im Notiztext erwähnst du Markierungen, Zeiten und deine
+  Abwägung nicht; die Zeit steht nur im Feld „wichtig“.
 - Aufgaben schreibst du als Markdown-Checkliste „- [ ] …“ mit Frist, falls genannt.
 - Ist die Aufnahme leer, unverständlich oder nur Rauschen, schreib eine einzige kurze Notiz mit Vorlage „tagebuch“
   und dem Titel „Kein verwertbarer Inhalt“.
@@ -69,7 +74,7 @@ SCHEMA = {
         },
         "wichtig": {
             "type": "array",
-            "description": "Stellen, die der Nutzer mit der Sprachmarke „wichtig“ hervorgehoben hat.",
+            "description": "Stellen, die der Nutzer mit der Sprachmarke „wichtig“ oder dem Markier-Knopf hervorgehoben hat.",
             "items": {
                 "type": "object",
                 "properties": {"zeit_s": {"type": "number"}, "text": {"type": "string", "description": "kurz, ein Satz"}},
@@ -117,7 +122,7 @@ def _woerterbuch_text() -> str:
 
 
 def prompt_bauen(text: Text, modus: str, start: str, dauer_s: float, hinweise: list[str],
-                 namen: dict[str, str] | None = None) -> str:
+                 namen: dict[str, str] | None = None, markierungen: list[float] | None = None) -> str:
     """namen: {"S1": "Jan"} – im Text werden die Kennungen durch die Namen ersetzt."""
     kopf = [
         f"Aufnahme vom {start}, Dauer {dauer_s / 60:.1f} min, Modus „{modus}“, erkannte Sprache „{text.sprache}“.",
@@ -129,6 +134,9 @@ def prompt_bauen(text: Text, modus: str, start: str, dauer_s: float, hinweise: l
                     + ", ".join(f"{k} = {v}" for k, v in sorted(namen.items())) + ".")
     if hinweise:
         kopf.append("Hinweise: " + " ".join(hinweise))
+    if markierungen:
+        kopf.append("Markierungen (Markier-Knopf) bei: "
+                    + ", ".join(f"{int(m) // 60}:{int(m) % 60:02d} ({m:.0f} s)" for m in sorted(markierungen)) + ".")
     return (
         "# Vorlagen\n\n" + _vorlagen_text() + _woerterbuch_text()
         + "\n\n# Aufnahme\n\n" + "\n".join(kopf)
@@ -138,10 +146,10 @@ def prompt_bauen(text: Text, modus: str, start: str, dauer_s: float, hinweise: l
 
 
 def auswerten(text: Text, modus: str, start: str, dauer_s: float, hinweise: list[str],
-              namen: dict[str, str] | None = None) -> dict:
+              namen: dict[str, str] | None = None, markierungen: list[float] | None = None) -> dict:
     """Wirft claude_aufruf.ClaudeLimitErreicht, wenn das Abo-Limit erreicht ist."""
     antwort = claude_aufruf.frage(
-        prompt_bauen(text, modus, start, dauer_s, hinweise, namen),
+        prompt_bauen(text, modus, start, dauer_s, hinweise, namen, markierungen),
         zeitlimit_s=900,
         system_prompt=_system_prompt(),
         json_schema=SCHEMA,

@@ -15,6 +15,8 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.os.VibrationEffect
+import android.os.Vibrator
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
@@ -30,6 +32,7 @@ class AufnahmeDienst : Service() {
     companion object {
         private const val AKTION_START = "de.braininger.START"
         private const val AKTION_STOPP = "de.braininger.STOPP"
+        private const val AKTION_MARKIEREN = "de.braininger.MARKIEREN"
         private const val EXTRA_MODUS = "modus"
         private const val KANAL_AUFNAHME = "aufnahme"
         private const val KANAL_HINWEISE = "hinweise"
@@ -63,6 +66,7 @@ class AufnahmeDienst : Service() {
     private var start = 0L
     private val stuecke = mutableListOf<String>()
     private val hinweise = mutableListOf<String>()
+    private val markierungen = mutableListOf<Long>() // Sekunden ab Aufnahmebeginn
     private var weckSperre: PowerManager.WakeLock? = null
     private val haupt = Handler(Looper.getMainLooper())
     private lateinit var audio: AudioManager
@@ -84,6 +88,7 @@ class AufnahmeDienst : Service() {
         when (intent?.action) {
             AKTION_START -> if (recorder == null) aufnahmeStarten(Modus.aus(intent.getStringExtra(EXTRA_MODUS)))
             AKTION_STOPP -> aufnahmeBeenden()
+            AKTION_MARKIEREN -> markieren()
         }
         return START_NOT_STICKY
     }
@@ -93,6 +98,7 @@ class AufnahmeDienst : Service() {
         start = System.currentTimeMillis()
         stuecke.clear()
         hinweise.clear()
+        markierungen.clear()
 
         // Sofort in den Vordergrund, sonst beendet Android den Dienst nach wenigen Sekunden.
         ServiceCompat.startForeground(
@@ -135,6 +141,18 @@ class AufnahmeDienst : Service() {
         AufnahmeStatus.aendern { it.copy(stueckeFertig = stuecke.size) }
         infoSchreiben(ende = null, status = if (recorder != null) "laeuft" else "fertig")
         HochladenAuftrag.anstossen(this)
+    }
+
+    /** Markier-Knopf: merkt sich die Stelle, der Laptop behandelt sie wie die Sprachmarke „Wichtig“. */
+    private fun markieren() {
+        if (recorder == null) return
+        markierungen += (System.currentTimeMillis() - start) / 1000
+        infoSchreiben(ende = null, status = "laeuft")
+        try {
+            getSystemService(Vibrator::class.java)?.vibrate(VibrationEffect.createOneShot(80, VibrationEffect.DEFAULT_AMPLITUDE))
+        } catch (_: Exception) {
+        }
+        getSystemService(NotificationManager::class.java).notify(ID_AUFNAHME, benachrichtigung())
     }
 
     private fun mikrofonPruefen() {
@@ -192,7 +210,7 @@ class AufnahmeDienst : Service() {
             Ablage.infoSchreiben(
                 o, modus, start, ende, stuecke.toList(),
                 AufnahmeStatus.zustand.value.mikrofon.ifBlank { MikroWahl.name(null) },
-                status, hinweise.toList(),
+                status, hinweise.toList(), markierungen.toList(),
             )
         } catch (e: Exception) {
             hinweisZeigen("Speichern fehlgeschlagen", e.message ?: "unbekannter Fehler")
@@ -204,6 +222,10 @@ class AufnahmeDienst : Service() {
             this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
+        val markieren = PendingIntent.getService(
+            this, 2, Intent(this, AufnahmeDienst::class.java).setAction(AKTION_MARKIEREN),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
         val stopp = PendingIntent.getService(
             this, 1, Intent(this, AufnahmeDienst::class.java).setAction(AKTION_STOPP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
@@ -211,13 +233,18 @@ class AufnahmeDienst : Service() {
         return NotificationCompat.Builder(this, KANAL_AUFNAHME)
             .setSmallIcon(R.drawable.ic_benachrichtigung)
             .setContentTitle("Aufnahme läuft: ${modus.anzeige}")
-            .setContentText("Tippen zum Öffnen")
+            .setContentText(
+                markierungen.lastOrNull()?.let { "${markierungen.size}× markiert, zuletzt bei %d:%02d".format(it / 60, it % 60) }
+                    ?: "Tippen zum Öffnen"
+            )
             .setWhen(start)
             .setUsesChronometer(true)
             .setShowWhen(true)
             .setOngoing(true)
             .setContentIntent(oeffnen)
+            .addAction(0, getString(R.string.knopf_markieren), markieren)
             .addAction(0, getString(R.string.knopf_stopp), stopp)
+            .setOnlyAlertOnce(true)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build()

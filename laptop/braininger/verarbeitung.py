@@ -195,7 +195,7 @@ class Bearbeitung:
             dauer = self.daten.get("dauer_audio_s") or float(self.a.dauer_s or 0)
             namen = self._sprecher_namen(text)
             antwort = auswertung.auswerten(text, self.a.modus, self.a.start, dauer, self.daten.get("hinweise", []),
-                                           namen)
+                                           namen, self.a.markierungen)
             self._notizen_ablegen(antwort["notizen"])
             self._sprecher_melden(namen, antwort.get("sprecher", []))
             self.daten.update(
@@ -253,7 +253,8 @@ class Bearbeitung:
         # bestätigte Namen bleiben, für die übrigen wird mit der neu gelernten Stimme noch einmal gesucht
         namen = self._sprecher_namen(text)
         dauer = self.daten.get("dauer_audio_s") or float(self.a.dauer_s or 0)
-        antwort = auswertung.auswerten(text, self.a.modus, self.a.start, dauer, self.daten.get("hinweise", []), namen)
+        antwort = auswertung.auswerten(text, self.a.modus, self.a.start, dauer, self.daten.get("hinweise", []), namen,
+                                       self.a.markierungen)
         self._notizen_ablegen(antwort["notizen"])
         self._sprecher_melden(namen, antwort.get("sprecher", []))
         self.daten.update(kurz=antwort["kurz"], notizen=antwort["notizen"], wichtig=antwort.get("wichtig", []))

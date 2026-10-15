@@ -47,6 +47,7 @@ object Ablage {
     fun infoSchreiben(
         ordner: File, modus: Modus, start: Long, ende: Long?,
         stuecke: List<String>, mikrofon: String, status: String, hinweise: List<String>,
+        markierungen: List<Long> = emptyList(),
     ) {
         val json = JSONObject().apply {
             put("version", 1)
@@ -59,6 +60,7 @@ object Ablage {
             put("mikrofon", mikrofon)
             put("status", status)
             put("hinweise", JSONArray(hinweise))
+            put("markierungen", JSONArray(markierungen))
             put("app_version", BuildConfig.VERSION_NAME)
         }
         val tmp = File(ordner, "info.json.tmp")
@@ -84,6 +86,7 @@ object Ablage {
             infoSchreiben(
                 a.ordner, a.modus, a.start, letzte, teile, a.mikrofon, "unterbrochen",
                 listOf("Aufnahme wurde unterbrochen, ${teile.size} Stücke gerettet."),
+                infoLesen(a.ordner)?.optJSONArray("markierungen")?.let { m -> (0 until m.length()).map { m.getLong(it) } }.orEmpty(),
             )
         }
     }

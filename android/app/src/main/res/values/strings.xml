@@ -4,6 +4,7 @@
     <string name="knopf_gedanke">GEDANKE</string>
     <string name="knopf_gespraech">GESPRÄCH</string>
     <string name="knopf_stopp">STOPP</string>
+    <string name="knopf_markieren">MARKIEREN</string>
     <string name="widget_beschreibung">Aufnahme mit einem Tipp starten</string>
     <string name="kanal_aufnahme">Laufende Aufnahme</string>
     <string name="kanal_hinweise">Hinweise</string>

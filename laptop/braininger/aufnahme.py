@@ -22,6 +22,7 @@ class Aufnahme:
     status: str  # "laeuft", "fertig" oder "unterbrochen"
     hinweise: list[str] = field(default_factory=list)
     app_version: str = ""
+    markierungen: list[float] = field(default_factory=list)  # Markier-Knopf, Sekunden ab Beginn
 
     @property
     def abgeschlossen(self) -> bool:
@@ -61,6 +62,7 @@ def lesen(ordner: Path) -> Aufnahme | None:
         status=j.get("status", ""),
         hinweise=list(j.get("hinweise") or []),
         app_version=j.get("app_version", ""),
+        markierungen=[float(m) for m in j.get("markierungen") or [] if isinstance(m, (int, float))],
     )
 
 
