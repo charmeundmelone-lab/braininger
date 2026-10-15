@@ -282,15 +282,28 @@ class ErgebnisAuftrag(context: Context, params: WorkerParameters) : CoroutineWor
 
     override suspend fun doWork(): Result = try {
         ErgebnisAbruf.benachrichtigen(applicationContext, ErgebnisAbruf.abrufen(applicationContext))
-        Uebersichten.abrufen(applicationContext)
-        if (Fragen.abrufen(applicationContext)) Fragen.benachrichtigen(applicationContext)
-        WarteHinweis.pruefen(applicationContext)
-        GoogleDocs.aktualisieren(applicationContext)
         AudioAufraeumen.aufraeumen(applicationContext)
+        WarteHinweis.pruefen(applicationContext)
+        // Zusatzteile: ein Fehler hier darf die übrigen nicht aufhalten
+        nebenbei { Uebersichten.abrufen(applicationContext) }
+        nebenbei { if (Fragen.abrufen(applicationContext)) Fragen.benachrichtigen(applicationContext) }
+        nebenbei { GoogleDocs.aktualisieren(applicationContext) }
         Result.success()
     } catch (_: AnmeldungNoetig) {
         Result.success() // Anmeldung meldet schon der Upload
     } catch (_: IOException) {
         Result.retry()
+    }
+
+    private suspend fun nebenbei(teil: suspend () -> Unit) {
+        try {
+            teil()
+        } catch (e: AnmeldungNoetig) {
+            throw e
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // nächster Durchlauf in 15 Minuten
+        }
     }
 }

@@ -87,7 +87,7 @@ fun FrageSeite(zurueck: () -> Unit, aufnahmeOeffnen: (String) -> Unit) {
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(
             value = eingabe, onValueChange = { eingabe = it.take(500) },
-            placeholder = { Text("z. B. Was habe ich mit Sibylle ausgemacht?", color = Grau, fontSize = 14.sp) },
+            placeholder = { Text("z. B. Was habe ich beim letzten Kundengespräch ausgemacht?", color = Grau, fontSize = 14.sp) },
             modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 4,
             colors = OutlinedTextFieldDefaults.colors(
                 focusedTextColor = Weiss, unfocusedTextColor = Weiss,

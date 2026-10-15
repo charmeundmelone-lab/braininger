@@ -83,10 +83,15 @@ object GoogleDocs {
 
             val drive = api ?: DriveApi(context).also { api = it }
             val ziel = ordnerId ?: drive.ordnerSichern("Notizen", drive.ordnerSichern("Braininger", null)).also { ordnerId = it }
-            bisher.optString("id").takeIf { it.isNotBlank() }?.let { drive.loeschen(it) }
-            val name = SimpleDateFormat("yyyy-MM-dd HH.mm", Locale.GERMANY).format(Date(a.start)) + " " + e.notizen.first().titel
-            val id = drive.hochladen(name.take(120), ziel, "text/html", html.toByteArray(), zielTyp = DOC)
-            docDatei.writeText(JSONObject().put("id", id).put("fingerabdruck", fingerabdruck).toString())
+            try {
+                bisher.optString("id").takeIf { it.isNotBlank() }?.let { drive.loeschen(it) }
+                val name = SimpleDateFormat("yyyy-MM-dd HH.mm", Locale.GERMANY).format(Date(a.start)) + " " + e.notizen.first().titel
+                val id = drive.hochladen(name.take(120), ziel, "text/html", html.toByteArray(), zielTyp = DOC)
+                docDatei.writeText(JSONObject().put("id", id).put("fingerabdruck", fingerabdruck).toString())
+            } catch (f: DriveFehler) {
+                if (f.code == 401) throw f
+                // diese eine Aufnahme beim nächsten Mal wieder versuchen, die übrigen trotzdem anlegen
+            }
         }
     }
 
