@@ -15,7 +15,7 @@ from pathlib import Path
 
 from . import aufnahme as aufnahme_modul
 from . import einstellungen as E
-from . import fragen, notizdateien, tagesuebersicht, woerterbuch
+from . import aufgaben, fragen, notizdateien, tagesuebersicht, woerterbuch
 from .claude_aufruf import schluessel_vorhanden
 from .verarbeitung import Bearbeitung, drive_nachtragen
 
@@ -103,6 +103,10 @@ def durchgang() -> int:
         fragen.pruefen()
     except Exception:
         log.exception("Fragen: unerwarteter Fehler")
+    try:
+        aufgaben.ansicht_schreiben()
+    except Exception:
+        log.exception("Aufgaben: unerwarteter Fehler")
     return anzahl
 
 

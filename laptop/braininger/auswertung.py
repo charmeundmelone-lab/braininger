@@ -5,17 +5,25 @@ from pathlib import Path
 from . import claude_aufruf, woerterbuch
 from .einstellungen import CLAUDE_ARBEITSORDNER, PERSOENLICH
 from .texterkennung import Text
-from .vorlagen import KENNUNGEN, NACH_KENNUNG, VORLAGEN
+from datetime import datetime
+
+from .vorlagen import KENNUNGEN, NACH_KENNUNG, STANDARD_GEDANKE, VORLAGEN
 
 SYSTEM_PROMPT = """Du bist der Auswerter von „Braininger“, einem persönlichen Sprachaufnahme-Assistenten.
 {wer} nimmt mit dem Handy Gedanken und Gespräche auf. Ein Spracherkenner am Laptop
 hat daraus einen Text mit Zeitmarken gemacht. Du schreibst daraus Notizen nach festen Vorlagen.
 
 Regeln:
-- Wähle für jede Notiz die passende Vorlage. Behandelt die Aufnahme klar getrennte Themen, die zu verschiedenen
-  Vorlagen gehören, schreib mehrere Notizen (eine je Thema). Sonst genau eine Notiz.
-- Nennt {name} am Anfang selbst eine Vorlage (z. B. „Gig-Nachbereitung:“ oder „Aufgabenliste“), hat das Vorrang.
-- Halte dich an den Aufbau der Vorlage. Lass Abschnitte weg, zu denen die Aufnahme nichts sagt. Erfinde nichts.
+- Modus „gedanke“: Nimm immer die Vorlage „gedanken“ und schreib genau eine Notiz. Nennt {name} am Anfang selbst
+  eine Vorlage (z. B. „Gig-Anfrage:“ oder „Song-Idee:“), schreibst du die Notiz stattdessen nach dieser.
+  Passt eine andere Vorlage eindeutig besser, weil die ganze Aufnahme z. B. eine Gig-Anfrage oder eine Song-Idee ist,
+  bleibst du trotzdem bei „gedanken“ und nennst die bessere in „vorlage_hinweis“ (mit kurzem Grund). Sonst bleibt
+  „vorlage_hinweis.vorlage“ leer.
+- Modus „gespraech“: Wähle selbst die passende Vorlage (nicht „gedanken“). Behandelt das Gespräch klar getrennte
+  Themen, die zu verschiedenen Vorlagen gehören, schreib mehrere Notizen. „vorlage_hinweis.vorlage“ bleibt leer.
+- Besteht eine Aufnahme nur aus einer kurzen Erinnerung oder Aufgabe (ein, zwei Sätze wie „Steuernummer
+  raussuchen“), schreib keine Notiz („notizen“ leer). Die Aufgabe steht dann nur in „aufgaben“.
+- Halte dich an die Anweisung der Vorlage. Lass Abschnitte weg, zu denen die Aufnahme nichts sagt. Erfinde nichts.
 - Der Spracherkenner macht Hörfehler. Korrigiere offensichtliche Fehler (Namen, Fachwörter, Songtitel) stillschweigend,
   wenn der Zusammenhang eindeutig ist. Unsicheres markierst du mit (?).
 - Schlüsse, die über das Gesagte hinausgehen (z. B. wer oder was mit einem Wort gemeint ist), darfst du ziehen,
@@ -27,7 +35,7 @@ Regeln:
 - Perspektive: Im Modus „gedanke“ schreibst du in der Ich-Form, als hätte {name} die Notiz selbst geschrieben
   („Ich bin müde …“, „Ich will morgen …“). Im Modus „gespraech“ schreibst du in der dritten Person und nennst
   {name} beim Namen, damit klar ist, wer was gesagt hat („{name} bietet an …, S2 fragt …“).
-- „[Pause …]“ im Text steht für eine lange Stille. Danach beginnt oft ein neues Thema; prüfe, ob eine eigene Notiz passt.
+- „[Pause …]“ im Text steht für eine lange Stille. Danach beginnt oft ein neues Thema.
 - Sprachmarke „Wichtig“: Sagt {name} „wichtig“ als Ansage, um etwas hervorzuheben („Wichtig: …“, „Das ist wichtig: …“,
   „Ganz wichtig …“), ist der Gedanke direkt danach markiert. Nicht gemeint ist „wichtig“ als gewöhnliches Wort im Satz
   („das war mir wichtig“). Jede markierte Stelle kommt in der passenden Notiz ganz nach oben unter „## Wichtig“
@@ -41,7 +49,22 @@ Regeln:
   Nachricht in derselben Reihenfolge bei. Lies, was darauf zu sehen ist (z. B. Setlist, Zettel, Rechnung, Ort),
   und nimm das Wichtige in die passende Notiz auf. Setz das Foto dort als eigene Zeile „![Foto](<Dateiname>)“ ein,
   wo es inhaltlich hingehört. Ist auf einem Foto nichts erkennbar, setz nur die Zeile.
-- Aufgaben schreibst du als Markdown-Checkliste „- [ ] …“ mit Frist, falls genannt.
+- Aufgaben: In die Notizen schreibst du keine Checklisten. Aufgaben schlägst du im Feld „aufgaben“ vor; {name}
+  bestätigt sie in der App, danach landen sie in seiner Aufgabenliste mit Erinnerung. Deshalb streng:
+  - Nur Aufgaben, die {name} selbst erledigen muss. Was andere tun sollen oder zugesagt haben, schlägst du nicht vor.
+  - Bei „wir“, „man“, „jemand müsste“ ohne klaren Namen: vorschlagen, aber mit „unklar_wer“ = true.
+  - Nicht vorschlagen: vage Wünsche („ich sollte mal mehr Sport machen“), was gleich erledigt wird oder schon
+    erledigt ist („mach ich jetzt gleich“), alltägliche Routinen ohne Besonderheit (Gassi gehen, Kinder abholen,
+    normaler Einkauf) und Überlegungen ohne Entscheidung („vielleicht sollte ich …“). Lieber eine zu wenig als Müll.
+  - „text“: kurz und ohne die Notiz verständlich, mit Namen statt Pronomen („Annas neue Steuernummer raussuchen“).
+  - Unten stehen {name}s offene Aufgaben mit Kennung. Ist eine davon gemeint, schlag sie nicht neu vor. Bringt die
+    Aufnahme eine neue Frist oder Information dazu: „art“ = „ergaenzen“, „bezug“ = Kennung, vollständiger neuer Text
+    und Frist. Sagt {name}, dass sie erledigt ist: „art“ = „erledigt“, „bezug“ = Kennung. Neue Aufgaben: „art“ =
+    „neu“, „bezug“ leer.
+  - „frist“ als „JJJJ-MM-TTTHH:MM“ (Ortszeit), gerechnet ab dem Aufnahmezeitpunkt. Genannte Uhrzeit genau
+    übernehmen. Sonst: früh/morgens 08:00, vormittags 10:00, mittags 12:00, nachmittags 15:00, abends 19:00,
+    spät/nachts 21:00, nur ein Tag ohne Tageszeit 08:00, „diese Woche“ Freitag 10:00, „nächste Woche“ Montag
+    10:00, „am Wochenende“ Samstag 10:00. Ohne jede Zeitangabe bleibt „frist“ leer.
 - Ist die Aufnahme leer, unverständlich oder nur Rauschen, schreib eine einzige kurze Notiz mit Vorlage „tagebuch“
   und dem Titel „Kein verwertbarer Inhalt“.
 """
@@ -52,7 +75,6 @@ SCHEMA = {
         "kurz": {"type": "string", "description": "Ein Satz, worum es in der Aufnahme geht (für die Liste in der App)."},
         "notizen": {
             "type": "array",
-            "minItems": 1,
             "items": {
                 "type": "object",
                 "properties": {
@@ -87,8 +109,33 @@ SCHEMA = {
                 "additionalProperties": False,
             },
         },
+        "aufgaben": {
+            "type": "array",
+            "description": "Aufgaben-Vorschläge für den Nutzer (siehe Regeln).",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "art": {"type": "string", "enum": ["neu", "ergaenzen", "erledigt"]},
+                    "text": {"type": "string"},
+                    "frist": {"type": "string", "description": "JJJJ-MM-TTTHH:MM oder leer"},
+                    "unklar_wer": {"type": "boolean"},
+                    "bezug": {"type": "string", "description": "Kennung einer offenen Aufgabe oder leer"},
+                },
+                "required": ["art", "text", "frist", "unklar_wer", "bezug"],
+                "additionalProperties": False,
+            },
+        },
+        "vorlage_hinweis": {
+            "type": "object",
+            "properties": {
+                "vorlage": {"type": "string", "enum": [""] + KENNUNGEN},
+                "grund": {"type": "string"},
+            },
+            "required": ["vorlage", "grund"],
+            "additionalProperties": False,
+        },
     },
-    "required": ["kurz", "notizen", "sprecher", "wichtig"],
+    "required": ["kurz", "notizen", "sprecher", "wichtig", "aufgaben", "vorlage_hinweis"],
     "additionalProperties": False,
 }
 
@@ -107,7 +154,7 @@ def _system_prompt() -> str:
 def _vorlagen_text() -> str:
     teile = []
     for v in VORLAGEN:
-        teile.append(f"### {v.kennung} – {v.name}\nWann: {v.wann}\nAufbau:\n{v.aufbau}")
+        teile.append(f"### {v.kennung} – {v.name}\nWann: {v.wann}\nAnweisung:\n{v.anweisung}")
     return "\n\n".join(teile)
 
 
@@ -126,12 +173,21 @@ def _woerterbuch_text() -> str:
             "und passt der Zusammenhang, ist dieser Begriff gemeint:\n" + ", ".join(b))
 
 
+def _wochentag(start: str) -> str:
+    try:
+        return " (" + ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"][
+            datetime.fromisoformat(start).weekday()] + ")"
+    except ValueError:
+        return ""
+
+
 def prompt_bauen(text: Text, modus: str, start: str, dauer_s: float, hinweise: list[str],
                  namen: dict[str, str] | None = None, markierungen: list[float] | None = None,
-                 fotos: list[tuple[str, float]] | None = None) -> str:
+                 fotos: list[tuple[str, float]] | None = None, offene_aufgaben: list[dict] | None = None) -> str:
     """namen: {"S1": "Jan"} – im Text werden die Kennungen durch die Namen ersetzt."""
     kopf = [
-        f"Aufnahme vom {start}, Dauer {dauer_s / 60:.1f} min, Modus „{modus}“, erkannte Sprache „{text.sprache}“.",
+        f"Aufnahme vom {start}{_wochentag(start)}, Dauer {dauer_s / 60:.1f} min, Modus „{modus}“, "
+        f"erkannte Sprache „{text.sprache}“.",
     ]
     if text.sprecher_anzahl is not None:
         kopf.append(f"Erkannte Sprecher: {text.sprecher_anzahl} (S1 spricht zuerst).")
@@ -146,8 +202,12 @@ def prompt_bauen(text: Text, modus: str, start: str, dauer_s: float, hinweise: l
     if fotos:
         kopf.append("Fotos (in dieser Reihenfolge beigefügt): "
                     + ", ".join(f"{d} bei {int(s) // 60}:{int(s) % 60:02d}" for d, s in fotos) + ".")
+    offen = "\n".join(
+        f"- {a['id']}: {a['text']}" + (f" (Frist {a['frist']})" if a.get("frist") else "") for a in offene_aufgaben or []
+    ) or "(keine)"
     return (
         "# Vorlagen\n\n" + _vorlagen_text() + _woerterbuch_text()
+        + "\n\n# Offene Aufgaben\n\n" + offen
         + "\n\n# Aufnahme\n\n" + "\n".join(kopf)
         + "\n\n# Text\n\n" + (text.als_zeilen(namen) or "(kein Text erkannt)")
         + "\n\nSchreib jetzt die Notiz(en)."
@@ -156,11 +216,12 @@ def prompt_bauen(text: Text, modus: str, start: str, dauer_s: float, hinweise: l
 
 def auswerten(text: Text, modus: str, start: str, dauer_s: float, hinweise: list[str],
               namen: dict[str, str] | None = None, markierungen: list[float] | None = None,
-              fotos: list[Path] | None = None, foto_zeiten: list[float] | None = None) -> dict:
+              fotos: list[Path] | None = None, foto_zeiten: list[float] | None = None,
+              offene_aufgaben: list[dict] | None = None) -> dict:
     """Wirft claude_aufruf.ClaudeLimitErreicht, wenn das Abo-Limit erreicht ist."""
     antwort = claude_aufruf.frage(
         prompt_bauen(text, modus, start, dauer_s, hinweise, namen, markierungen,
-                     [(f.name, z) for f, z in zip(fotos or [], foto_zeiten or [])]),
+                     [(f.name, z) for f, z in zip(fotos or [], foto_zeiten or [])], offene_aufgaben),
         zeitlimit_s=900,
         system_prompt=_system_prompt(),
         json_schema=SCHEMA,
@@ -170,9 +231,29 @@ def auswerten(text: Text, modus: str, start: str, dauer_s: float, hinweise: list
     daten = antwort.daten
     # Zur Sicherheit selbst prüfen, falls Claude doch vom Schema abweicht
     notizen = [n for n in daten.get("notizen", []) if n.get("vorlage") in KENNUNGEN and n.get("inhalt")]
-    if not notizen:
-        raise claude_aufruf.ClaudeFehler("Claude hat keine gültige Notiz geliefert.")
+    if modus == "gedanke" and notizen and notizen[0]["vorlage"] == STANDARD_GEDANKE:
+        notizen = notizen[:1]  # Standard-Vorlage: eine Notiz je Aufnahme
+    offen = {a["id"] for a in offene_aufgaben or []}
+    aufgaben = []
+    for a in daten.get("aufgaben", []):
+        text = str(a.get("text", "")).strip()
+        if not text or a.get("art") not in ("neu", "ergaenzen", "erledigt"):
+            continue
+        if a["art"] != "neu" and a.get("bezug") not in offen:
+            if a["art"] == "erledigt":
+                continue  # unbekannte Aufgabe kann nicht abgehakt werden
+            a = dict(a, art="neu", bezug="")  # Bezug unbekannt: lieber als neue Aufgabe vorschlagen
+        try:
+            frist = datetime.fromisoformat(a["frist"]).strftime("%Y-%m-%dT%H:%M") if a.get("frist") else ""
+        except ValueError:
+            frist = ""
+        aufgaben.append({"art": a["art"], "text": text, "frist": frist, "unklar_wer": bool(a.get("unklar_wer")),
+                         "bezug": a.get("bezug", "") if a["art"] != "neu" else ""})
     daten["notizen"] = notizen
+    daten["aufgaben"] = aufgaben
+    hinweis = daten.get("vorlage_hinweis") or {}
+    daten["vorlage_hinweis"] = hinweis if hinweis.get("vorlage") in KENNUNGEN and notizen \
+        and hinweis["vorlage"] != notizen[0]["vorlage"] else None
     daten["dauer_ms"] = antwort.dauer_ms
     return daten
 

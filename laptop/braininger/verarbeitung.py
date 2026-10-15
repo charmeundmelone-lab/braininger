@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import auswertung, ergebnis, notizdateien, stimmen, woerterbuch
+from . import aufgaben, auswertung, ergebnis, notizdateien, stimmen, woerterbuch
 from .aufnahme import Aufnahme, zusammenfuegen
 from .claude_aufruf import ClaudeFehler, ClaudeLimitErreicht
 from .einstellungen import AUFNAHMEN_LOKAL
@@ -200,16 +200,17 @@ class Bearbeitung:
             dauer = self.daten.get("dauer_audio_s") or float(self.a.dauer_s or 0)
             namen = self._sprecher_namen(text)
             antwort = auswertung.auswerten(text, self.a.modus, self.a.start, dauer, self.daten.get("hinweise", []),
-                                           namen, self.a.markierungen, *self._fotos())
+                                           namen, self.a.markierungen, *self._fotos(), aufgaben.offene())
             self._notizen_ablegen(antwort["notizen"])
             self._sprecher_melden(namen, antwort.get("sprecher", []))
             self.daten.update(
                 status="fertig", schritt=None, fortschritt=1.0, meldung=None, weiter_ab=None,
                 kurz=antwort["kurz"], notizen=antwort["notizen"], wichtig=antwort.get("wichtig", []),
+                aufgaben=antwort["aufgaben"], vorlage_hinweis=antwort["vorlage_hinweis"],
             )
             self.zustand.status, self.zustand.meldung = "fertig", None
-            log.info("%s: fertig, %d Notiz(en): %s", self.a.id, len(antwort["notizen"]),
-                     ", ".join(n["vorlage"] for n in antwort["notizen"]))
+            log.info("%s: fertig, %d Notiz(en): %s, %d Aufgaben-Vorschläge", self.a.id, len(antwort["notizen"]),
+                     ", ".join(n["vorlage"] for n in antwort["notizen"]), len(antwort["aufgaben"]))
 
         except ClaudeLimitErreicht as e:
             weiter = datetime.now().astimezone() + LIMIT_PAUSE
@@ -259,7 +260,7 @@ class Bearbeitung:
         namen = self._sprecher_namen(text)
         dauer = self.daten.get("dauer_audio_s") or float(self.a.dauer_s or 0)
         antwort = auswertung.auswerten(text, self.a.modus, self.a.start, dauer, self.daten.get("hinweise", []), namen,
-                                       self.a.markierungen, *self._fotos())
+                                       self.a.markierungen, *self._fotos(), aufgaben.offene())
         self._notizen_ablegen(antwort["notizen"])
         self._sprecher_melden(namen, antwort.get("sprecher", []))
         self.daten.update(kurz=antwort["kurz"], notizen=antwort["notizen"], wichtig=antwort.get("wichtig", []))
@@ -283,6 +284,7 @@ class Bearbeitung:
                 neu = auswertung.vorlage_aendern(text, self.a.modus, self.a.start, self.daten["notizen"][index],
                                                  vorlage, namen)
                 self.daten["notizen"][index] = neu
+                self.daten["vorlage_hinweis"] = None  # umgestellt: Hinweis erledigt
                 self._notizen_ablegen(self.daten["notizen"])
             elif art == "sprecher_benennen":
                 self._sprecher_benennen(text, nummer, str(auftrag.get("kennung", "")), str(auftrag.get("name") or ""))
