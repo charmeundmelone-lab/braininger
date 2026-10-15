@@ -207,12 +207,19 @@ object ErgebnisAbruf {
             tmp.writeBytes(inhalt)
             tmp.renameTo(File(a.ordner, "ergebnis.json"))
             geaendert[id]?.let { zeitDatei.writeText(it) }
-            if (neu.status == "fertig" && alt?.status != "fertig") neuFertig += a.ordner to neu
+            if (neu.endgueltig && alt?.status != neu.status) neuFertig += a.ordner to neu
         }
         return neuFertig
     }
 
-    fun benachrichtigen(context: Context, fertig: List<Pair<File, Ergebnis>>) {
+    /** alle: Aufnahmen, die gerade fertig oder mit Fehler beendet wurden. */
+    fun benachrichtigen(context: Context, alle: List<Pair<File, Ergebnis>>) {
+        val fehler = alle.filter { it.second.status == "fehler" }
+        if (fehler.isNotEmpty()) {
+            Hinweise.zeigen(context, 9, "Fehler am Laptop",
+                fehler.first().second.meldung ?: "Eine Aufnahme ließ sich nicht auswerten. Tippen zum Ansehen.")
+        }
+        val fertig = alle.filter { it.second.status == "fertig" }
         if (fertig.isEmpty()) return
         val text = if (fertig.size == 1) fertig[0].second.kurz ?: "Die Notiz ist fertig."
                    else "${fertig.size} Aufnahmen sind ausgewertet."
@@ -277,6 +284,8 @@ class ErgebnisAuftrag(context: Context, params: WorkerParameters) : CoroutineWor
         ErgebnisAbruf.benachrichtigen(applicationContext, ErgebnisAbruf.abrufen(applicationContext))
         Uebersichten.abrufen(applicationContext)
         if (Fragen.abrufen(applicationContext)) Fragen.benachrichtigen(applicationContext)
+        WarteHinweis.pruefen(applicationContext)
+        GoogleDocs.aktualisieren(applicationContext)
         AudioAufraeumen.aufraeumen(applicationContext)
         Result.success()
     } catch (_: AnmeldungNoetig) {

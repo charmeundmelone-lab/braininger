@@ -97,9 +97,10 @@ class DriveApi(private val context: Context) {
     }
 
     /** Lädt eine neue Datei hoch (bis ca. 5 MB) und liefert ihre ID. */
-    suspend fun hochladen(name: String, elternId: String, mime: String, inhalt: ByteArray): String = mitZugang { s ->
+    suspend fun hochladen(name: String, elternId: String, mime: String, inhalt: ByteArray, zielTyp: String? = null): String = mitZugang { s ->
         val grenze = "braininger" + System.nanoTime()
         val meta = JSONObject().put("name", name).put("parents", JSONArray().put(elternId))
+        if (zielTyp != null) meta.put("mimeType", zielTyp) // z. B. Google-Dokument: Drive wandelt beim Hochladen um
         val koerper = ByteArrayOutputStream().apply {
             write("--$grenze\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n".toByteArray())
             write(meta.toString().toByteArray())
