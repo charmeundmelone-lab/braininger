@@ -79,7 +79,7 @@ class TastenDienst : AccessibilityService() {
                 }
             }
         }
-        return false // Nothing behält seine eigenen Aktionen
+        return true // Ereignis schlucken, damit Nothing möglichst nicht zusätzlich Essential Space öffnet
     }
 
     private fun doppelt() {
