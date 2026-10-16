@@ -14,7 +14,7 @@ android {
 
     defaultConfig {
         applicationId = "de.braininger.app"
-        minSdk = 29
+        minSdk = 33 // Glyph Developer Kit verlangt 33; Braininger läuft nur auf Jans Phone (3a) mit Android 16
         targetSdk = 35
         versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
         versionName = "0.1.${System.getenv("GITHUB_RUN_NUMBER") ?: "0"}"
