@@ -15,7 +15,7 @@ from pathlib import Path
 
 from . import aufnahme as aufnahme_modul
 from . import einstellungen as E
-from . import aufgaben, fragen, notizdateien, tagesuebersicht, woerterbuch
+from . import aufgaben, fragen, notizdateien, ordnung, tagesuebersicht, woerterbuch
 from .claude_aufruf import schluessel_vorhanden
 from .verarbeitung import Bearbeitung, drive_nachtragen
 
@@ -62,7 +62,10 @@ def bereite_aufnahmen() -> list[aufnahme_modul.Aufnahme]:
     except OSError:
         return []  # Drive für Desktop noch nicht gestartet oder offline
     fertig = []
+    geloescht = ordnung.papierkorb()
     for o in ordner:
+        if o.name in geloescht:
+            continue  # im Papierkorb der App: nicht (weiter) auswerten
         a = aufnahme_modul.lesen(o)
         if a and a.abgeschlossen:
             fertig.append(a)
@@ -95,6 +98,11 @@ def durchgang() -> int:
         log.info("%s: Bearbeitung startet (Modus %s, %d Stücke, Status %s)", a.id, a.modus, len(a.stuecke), a.status)
         b.ausfuehren()
         anzahl += 1
+    try:
+        ordnung.aufraeumen()
+        notizdateien.nachholen()  # z. B. für zurückgeholte Aufnahmen
+    except Exception:
+        log.exception("Papierkorb: unerwarteter Fehler")
     try:
         tagesuebersicht.pruefen()
     except Exception:

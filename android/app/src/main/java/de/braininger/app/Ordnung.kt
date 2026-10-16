@@ -23,12 +23,16 @@ import java.util.Locale
  * Was vorne auf der Startseite steht und was im Archiv liegt.
  * Vorne: Aufnahmen der letzten 7 Tage, die nicht von Hand archiviert sind. Alles andere steht im Archiv.
  * Archivieren nimmt eine Aufnahme nur aus der Liste: Suche, Fragen, Tagesübersicht und Notizdateien bleiben.
+ * Löschen legt sie 30 Tage in den Papierkorb: ab da zählt sie nirgends mehr mit (App und Laptop), lässt sich
+ * aber zurückholen. Der Laptop liest die Datei über G: (Papierkorb ausnehmen, Notizdateien wegräumen).
  *
- * Datei: files/ordnung/ordnung.json {version, aufnahmen: {<id>: {zustand: "archiv", seit}}}.
+ * Datei: files/ordnung/ordnung.json {version, aufnahmen: {<id>: {zustand: "archiv" | "papierkorb", seit, vorher?}}}.
+ * vorher = "archiv": lag vor dem Löschen im Archiv und kommt beim Zurückholen dorthin zurück.
  * Sicherung im Drive unter Braininger/Ordnung/ordnung.json (die App legt sie an, siehe drive.file).
  */
 object Ordnung {
     const val TAGE_VORNE = 7
+    const val TAGE_PAPIERKORB = 30
     private const val TAG_MS = 24 * 3_600_000L
     private val iso get() = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.ROOT)
 
@@ -59,6 +63,19 @@ object Ordnung {
         return a.keys().asSequence().filter { a.optJSONObject(it)?.optString("zustand") == "archiv" }.toSet()
     }
 
+    /** Aufnahmen im Papierkorb mit dem Zeitpunkt des Löschens. */
+    fun papierkorb(context: Context): Map<String, Long> {
+        val a = lesen(context)
+        return a.keys().asSequence().mapNotNull { id ->
+            val o = a.optJSONObject(id)?.takeIf { it.optString("zustand") == "papierkorb" } ?: return@mapNotNull null
+            id to (try { iso.parse(o.optString("seit"))?.time } catch (_: Exception) { null } ?: System.currentTimeMillis())
+        }.toMap()
+    }
+
+    /** Ganze Tage, bis eine gelöschte Aufnahme endgültig weg ist (mindestens 0). */
+    fun restTage(geloescht: Long, jetzt: Long = System.currentTimeMillis()) =
+        (TAGE_PAPIERKORB - ((jetzt - geloescht) / TAG_MS).toInt()).coerceAtLeast(0)
+
     /** Neu genug für vorne (laufende Aufnahmen immer). */
     fun frisch(a: Aufnahme, jetzt: Long = System.currentTimeMillis()) =
         a.status == "laeuft" || jetzt - a.start < TAGE_VORNE * TAG_MS
@@ -72,9 +89,31 @@ object Ordnung {
         speichern(context, a)
     }
 
+    fun loeschen(context: Context, ids: Collection<String>) {
+        val a = lesen(context)
+        val seit = iso.format(Date())
+        for (id in ids) {
+            val vorher = a.optJSONObject(id)?.optString("zustand")
+            if (vorher == "papierkorb") continue
+            a.put(id, JSONObject().put("zustand", "papierkorb").put("seit", seit).apply {
+                if (vorher == "archiv") put("vorher", "archiv")
+            })
+        }
+        speichern(context, a)
+    }
+
+    /** Aus dem Archiv nach vorne oder aus dem Papierkorb dorthin, wo die Aufnahme vorher war. */
     fun zurueckholen(context: Context, ids: Collection<String>) {
         val a = lesen(context)
-        for (id in ids) a.remove(id)
+        val seit = iso.format(Date())
+        for (id in ids) {
+            val o = a.optJSONObject(id)
+            if (o?.optString("zustand") == "papierkorb" && o.optString("vorher") == "archiv") {
+                a.put(id, JSONObject().put("zustand", "archiv").put("seit", seit))
+            } else {
+                a.remove(id)
+            }
+        }
         speichern(context, a)
     }
 

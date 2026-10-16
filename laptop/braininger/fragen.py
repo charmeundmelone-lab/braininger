@@ -13,7 +13,7 @@ import logging
 import re
 from datetime import datetime, timedelta
 
-from . import claude_aufruf, ergebnis
+from . import claude_aufruf, ergebnis, ordnung
 from . import einstellungen as E
 from .auswertung import _system_prompt
 from .vorlagen import NACH_KENNUNG
@@ -73,7 +73,10 @@ def _datum(aufnahme_id: str) -> str:
 
 def _fertige() -> list[tuple[str, dict]]:
     aus = []
+    geloescht = ordnung.papierkorb()
     for o in sorted(E.AUFNAHMEN_LOKAL.glob("*"), reverse=True):  # neueste zuerst
+        if o.name in geloescht:
+            continue
         try:
             e = json.loads((o / "ergebnis.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):

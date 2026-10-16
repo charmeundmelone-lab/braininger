@@ -54,7 +54,11 @@ private const val SICHTBAR = 4
 fun AufgabenBereich() {
     val context = LocalContext.current
     val stand by AufgabenSpeicher.stand.collectAsState()
-    val vorschlaege = remember(stand) { AufgabenSpeicher.vorschlaege(context) }
+    val ordnungStand by Ordnung.stand.collectAsState()
+    val vorschlaege = remember(stand, ordnungStand) {
+        val papierkorb = Ordnung.papierkorb(context)
+        AufgabenSpeicher.vorschlaege(context).filter { it.aufnahme !in papierkorb }
+    }
     val offene = remember(stand) { AufgabenSpeicher.offene(context) }
     val texte = remember(stand) { AufgabenSpeicher.alle(context).associate { it.id to it.text } }
     var alleZeigen by remember { mutableStateOf(false) }

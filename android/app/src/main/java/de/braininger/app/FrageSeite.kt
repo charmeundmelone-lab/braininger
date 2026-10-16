@@ -53,7 +53,7 @@ fun FrageSeite(zurueck: () -> Unit, aufnahmeOeffnen: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     var eingabe by remember { mutableStateOf("") }
     var aktuell by remember { mutableStateOf(Fragen.aktuell(context)) }
-    var verlauf by remember { mutableStateOf(Fragen.verlauf(context)) }
+    var verlauf by remember { mutableStateOf(Fragen.sichtbarerVerlauf(context)) }
     var meldung by remember { mutableStateOf<String?>(null) }
     val wartet = aktuell?.fertig == false
 
@@ -67,7 +67,7 @@ fun FrageSeite(zurueck: () -> Unit, aufnahmeOeffnen: (String) -> Unit) {
                 // kein Netz: gleich noch mal
             }
             aktuell = Fragen.aktuell(context)
-            verlauf = Fragen.verlauf(context)
+            verlauf = Fragen.sichtbarerVerlauf(context)
             delay(10_000)
         }
     }

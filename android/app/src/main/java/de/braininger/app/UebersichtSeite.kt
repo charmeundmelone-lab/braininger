@@ -51,7 +51,7 @@ fun UebersichtSeite(zurueck: () -> Unit) {
     BackHandler(onBack = zurueck)
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var liste by remember { mutableStateOf(Uebersichten.alle(context)) }
+    var liste by remember { mutableStateOf(Uebersichten.sichtbar(context)) }
     var offen by remember { mutableStateOf(liste.firstOrNull()?.tag) }
     var meldung by remember { mutableStateOf<String?>(null) }
     var auftragOffen by remember { mutableStateOf(Uebersichten.auftragOffen(context)) }
@@ -64,7 +64,7 @@ fun UebersichtSeite(zurueck: () -> Unit) {
         } catch (_: Exception) {
             // kein Netz: beim nächsten Mal
         }
-        liste = Uebersichten.alle(context)
+        liste = Uebersichten.sichtbar(context)
         auftragOffen = Uebersichten.auftragOffen(context)
         if (offen == null) offen = liste.firstOrNull()?.tag
     }

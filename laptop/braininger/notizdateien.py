@@ -110,8 +110,10 @@ def nachholen() -> int:
         ordner = sorted(p for p in E.AUFNAHMEN_LOKAL.iterdir() if p.is_dir())
     except OSError:
         return 0
+    from .ordnung import papierkorb  # hier, sonst Kreis-Import
+    geloescht = papierkorb()
     for lokal in ordner:
-        if (lokal / LISTE).exists():
+        if (lokal / LISTE).exists() or lokal.name in geloescht:
             continue
         try:
             daten = json.loads((lokal / "ergebnis.json").read_text(encoding="utf-8"))
@@ -121,7 +123,8 @@ def nachholen() -> int:
             continue
         modus = lokal.name.rsplit("_", 1)[-1]
         try:
-            ablegen(lokal.name, modus, daten["notizen"], lokal)
+            fotos = E.EINGANG / lokal.name
+            ablegen(lokal.name, modus, daten["notizen"], lokal, fotos if fotos.is_dir() else None)
             anzahl += 1
         except (OSError, ValueError):
             log.exception("%s: Notizdateien ließen sich nicht anlegen", lokal.name)

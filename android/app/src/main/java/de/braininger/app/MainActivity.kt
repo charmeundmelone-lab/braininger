@@ -141,9 +141,12 @@ private fun Startseite(aktualisierung: Int) {
     val ordnungStand by Ordnung.stand.collectAsStateWithLifecycle()
     var archiviert by remember { mutableStateOf(emptySet<String>()) }
     var auswahl by remember { mutableStateOf(emptySet<String>()) }
+    var papierkorb by remember { mutableStateOf(emptyMap<String, Long>()) }
     var zeigeArchiv by remember { mutableStateOf(false) }
     var vonArchiv by remember { mutableStateOf(false) }
-    var rueckgaengig by remember { mutableStateOf<Rueckgaengig?>(null) }
+    var zeigePapierkorb by remember { mutableStateOf(false) }
+    var vonPapierkorb by remember { mutableStateOf(false) }
+    val rueckgaengig by rueckgaengigHinweis
     val scope = rememberCoroutineScope()
 
     fun pruefen() {
@@ -155,6 +158,7 @@ private fun Startseite(aktualisierung: Int) {
         ergebnisse = aufnahmen.associate { it.ordner.name to Ergebnis.lesen(it.ordner) }
         googleFehlt = HochladenAuftrag.anmeldungFehlt(context)
         archiviert = Ordnung.archivierte(context)
+        papierkorb = Ordnung.papierkorb(context)
     }
 
     fun angemeldet() {
@@ -258,38 +262,72 @@ private fun Startseite(aktualisierung: Int) {
             if (vonArchiv) {
                 vonArchiv = false; zeigeArchiv = true
             }
-        }
-        val ordnungKnopf: Pair<String, () -> Unit>? = when {
-            offeneAufnahme.status == "laeuft" -> null
-            Ordnung.vorne(offeneAufnahme, archiviert) -> "ARCHIVIEREN" to {
-                Ordnung.archivieren(context, listOf(id))
-                zurueckZurListe()
-                rueckgaengig = Rueckgaengig("Archiviert") { Ordnung.zurueckholen(context, listOf(id)) }
+            if (vonPapierkorb) {
+                vonPapierkorb = false; zeigePapierkorb = true
             }
-            id in archiviert && Ordnung.frisch(offeneAufnahme) -> "NACH VORNE" to {
-                Ordnung.zurueckholen(context, listOf(id))
-                offen = null; vonFragen = false; vonArchiv = false
-                rueckgaengig = Rueckgaengig("Wieder vorne") { Ordnung.archivieren(context, listOf(id)) }
-            }
-            else -> null
         }
-        ErgebnisSeite(offeneAufnahme, ergebnisse[id], aktualisierung + abrufZaehler, ordnungKnopf) { zurueckZurListe() }
+        fun zurStartseite() {
+            offen = null; vonFragen = false; vonArchiv = false; vonPapierkorb = false
+        }
+        val knoepfe = buildList<Pair<String, () -> Unit>> {
+            if (offeneAufnahme.status == "laeuft") return@buildList
+            when {
+                id in papierkorb -> add("ZURÜCKHOLEN" to {
+                    Ordnung.zurueckholen(context, listOf(id))
+                    zurStartseite()
+                    rueckgaengigHinweis.value = Rueckgaengig("Zurückgeholt") { Ordnung.loeschen(context, listOf(id)) }
+                    ergebnisseHolen()
+                })
+                else -> {
+                    if (Ordnung.vorne(offeneAufnahme, archiviert)) add("ARCHIVIEREN" to {
+                        Ordnung.archivieren(context, listOf(id))
+                        zurueckZurListe()
+                        rueckgaengigHinweis.value = Rueckgaengig("Archiviert") { Ordnung.zurueckholen(context, listOf(id)) }
+                    })
+                    else if (id in archiviert && Ordnung.frisch(offeneAufnahme)) add("NACH VORNE" to {
+                        Ordnung.zurueckholen(context, listOf(id))
+                        zurStartseite()
+                        rueckgaengigHinweis.value = Rueckgaengig("Wieder vorne") { Ordnung.archivieren(context, listOf(id)) }
+                    })
+                    add("LÖSCHEN" to {
+                        Ordnung.loeschen(context, listOf(id))
+                        zurueckZurListe()
+                        rueckgaengigHinweis.value = Rueckgaengig("Gelöscht") { Ordnung.zurueckholen(context, listOf(id)) }
+                        ergebnisseHolen()
+                    })
+                }
+            }
+        }
+        ErgebnisSeite(offeneAufnahme, ergebnisse[id], aktualisierung + abrufZaehler, knoepfe) { zurueckZurListe() }
+        return
+    }
+    // Gelöschte zählen nirgends mehr mit, nur im Papierkorb
+    val sichtbar = aufnahmen.filter { it.ordner.name !in papierkorb }
+    if (zeigePapierkorb) {
+        PapierkorbSeite(
+            aufnahmen.filter { it.ordner.name in papierkorb }, papierkorb, uploads, ergebnisse,
+            oeffnen = { id -> zeigePapierkorb = false; vonPapierkorb = true; offen = id },
+            zurueckgeholt = { ergebnisseHolen() },
+        ) { zeigePapierkorb = false; zeigeArchiv = true }
         return
     }
     if (zeigeArchiv) {
-        ArchivSeite(aufnahmen, uploads, ergebnisse, archiviert, oeffnen = { id ->
-            zeigeArchiv = false; vonArchiv = true; offen = id; ergebnisseHolen()
-        }) { zeigeArchiv = false }
+        ArchivSeite(
+            sichtbar, uploads, ergebnisse, archiviert, papierkorb.size,
+            oeffnen = { id -> zeigeArchiv = false; vonArchiv = true; offen = id; ergebnisseHolen() },
+            papierkorbOeffnen = { zeigeArchiv = false; zeigePapierkorb = true },
+            geloescht = { ergebnisseHolen() },
+        ) { zeigeArchiv = false }
         return
     }
     BackHandler(enabled = auswahl.isNotEmpty()) { auswahl = emptySet() }
 
     // Suche findet alles, auch Archiviertes. Ohne Suche stehen vorne nur die letzten 7 Tage.
-    val treffer = remember(aufnahmen, ergebnisse, suche, archiviert) {
-        if (suche.isBlank()) aufnahmen.filter { Ordnung.vorne(it, archiviert) }.map { it to "" }
-        else aufnahmen.mapNotNull { a -> Suche.treffer(a, ergebnisse[a.ordner.name], suche)?.let { a to it } }
+    val treffer = remember(sichtbar, ergebnisse, suche, archiviert) {
+        if (suche.isBlank()) sichtbar.filter { Ordnung.vorne(it, archiviert) }.map { it to "" }
+        else sichtbar.mapNotNull { a -> Suche.treffer(a, ergebnisse[a.ordner.name], suche)?.let { a to it } }
     }
-    val imArchiv = aufnahmen.count { !Ordnung.vorne(it, archiviert) }
+    val imArchiv = sichtbar.count { !Ordnung.vorne(it, archiviert) }
     Box(Modifier.fillMaxSize().background(Schwarz)) {
     // Die ganze Seite scrollt, damit Aufgaben, Vorschläge und Aufnahmen immer Platz haben
     LazyColumn(
@@ -405,7 +443,7 @@ private fun Startseite(aktualisierung: Int) {
                 }
                 HorizontalDivider(color = Linie)
             }
-        if (suche.isBlank() && imArchiv > 0) {
+        if (suche.isBlank() && (imArchiv > 0 || papierkorb.isNotEmpty())) {
             item {
                 Spacer(Modifier.height(16.dp))
                 SeitenKnopf("ARCHIV ($imArchiv)", Modifier.fillMaxWidth()) { auswahl = emptySet(); zeigeArchiv = true }
@@ -427,13 +465,14 @@ private fun Startseite(aktualisierung: Int) {
                 val ids = auswahl.toList()
                 Ordnung.archivieren(context, ids)
                 auswahl = emptySet()
-                rueckgaengig = Rueckgaengig(if (ids.size == 1) "Archiviert" else "${ids.size} archiviert") {
+                rueckgaengigHinweis.value = Rueckgaengig(if (ids.size == 1) "Archiviert" else "${ids.size} archiviert") {
                     Ordnung.zurueckholen(context, ids)
                 }
             }) { Text("ARCHIVIEREN", color = Weiss, fontWeight = FontWeight.Bold) }
+            LoeschenKnopf(auswahl) { auswahl = emptySet(); ergebnisseHolen() }
         }
     } else {
-        RueckgaengigLeiste(rueckgaengig, Modifier.align(Alignment.BottomCenter)) { rueckgaengig = null }
+        RueckgaengigLeiste(Modifier.align(Alignment.BottomCenter))
     }
     }
 
@@ -567,7 +606,7 @@ internal fun SeitenKnopf(text: String, modifier: Modifier, onClick: () -> Unit) 
 @Composable
 internal fun AufnahmeZeile(
     a: Aufnahme, upload: UploadStand?, ergebnis: Ergebnis?,
-    ausgewaehlt: Boolean = false, lang: (() -> Unit)? = null, oeffnen: () -> Unit,
+    ausgewaehlt: Boolean = false, lang: (() -> Unit)? = null, hinweis: String? = null, oeffnen: () -> Unit,
 ) {
     val datum = remember(a.start) { SimpleDateFormat("EE dd.MM. HH:mm", Locale.GERMANY).format(Date(a.start)) }
     val statusText = when {
@@ -600,6 +639,7 @@ internal fun AufnahmeZeile(
                 ergebnis?.kurz ?: "${dauerText(a.dauerMs)} · ${a.stuecke} Stücke · ${a.mikrofon}",
                 color = Grau, fontSize = 12.sp, maxLines = 2,
             )
+            hinweis?.let { Text(it, color = Rot, fontSize = 12.sp) }
         }
         Spacer(Modifier.width(8.dp))
         Text(

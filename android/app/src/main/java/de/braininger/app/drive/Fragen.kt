@@ -73,6 +73,12 @@ object Fragen {
         return (0 until a.length()).map { Antwort.aus(a.getJSONObject(it)) }
     }
 
+    /** Verlauf ohne Antworten, die sich auf Aufnahmen im Papierkorb stützen. */
+    fun sichtbarerVerlauf(context: Context): List<Antwort> {
+        val papierkorb = de.braininger.app.Ordnung.papierkorb(context)
+        return verlauf(context).filter { a -> a.quellen.none { it.id in papierkorb } }
+    }
+
     suspend fun stellen(context: Context, frage: String) {
         val api = DriveApi(context)
         val s = lesen(context, "stand.json") ?: JSONObject()

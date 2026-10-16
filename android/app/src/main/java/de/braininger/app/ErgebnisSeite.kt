@@ -60,7 +60,7 @@ import java.util.Locale
 @Composable
 fun ErgebnisSeite(
     aufnahme: Aufnahme, ergebnis: Ergebnis?, aktualisierung: Int,
-    ordnungKnopf: Pair<String, () -> Unit>? = null, zurueck: () -> Unit,
+    knoepfe: List<Pair<String, () -> Unit>> = emptyList(), zurueck: () -> Unit,
 ) {
     BackHandler(onBack = zurueck)
     val context = LocalContext.current
@@ -81,7 +81,8 @@ fun ErgebnisSeite(
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 8.dp)) {
             TextButton(onClick = zurueck) { Text("‹ ZURÜCK", color = Weiss, fontWeight = FontWeight.Bold) }
             Spacer(Modifier.weight(1f))
-            ordnungKnopf?.let { (text, aktion) ->
+            // Archivieren / Nach vorne / Löschen / Zurückholen
+            for ((text, aktion) in knoepfe) {
                 TextButton(onClick = aktion) { Text(text, color = Grau, fontWeight = FontWeight.Bold, fontSize = 13.sp) }
             }
         }

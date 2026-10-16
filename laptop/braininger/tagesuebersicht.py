@@ -14,7 +14,7 @@ import logging
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from . import claude_aufruf, ergebnis, notizdateien
+from . import claude_aufruf, ergebnis, notizdateien, ordnung
 from . import einstellungen as E
 from .auswertung import _system_prompt
 from .vorlagen import NACH_KENNUNG
@@ -78,7 +78,7 @@ def _ergebnisse_des_tages(tag: str) -> tuple[list[dict], list[str]]:
     namen = {p.name for p in ordner}
     if E.AUFNAHMEN_LOKAL.exists():
         namen |= {p.name for p in E.AUFNAHMEN_LOKAL.iterdir() if p.is_dir() and p.name.startswith(tag)}
-    for name in sorted(namen):
+    for name in sorted(namen - ordnung.papierkorb()):  # Gelöschte zählen nicht mit
         try:
             j = json.loads((E.AUFNAHMEN_LOKAL / name / "ergebnis.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -128,6 +128,8 @@ def erstellen(tag: str, auftrag_nummer: int | None = None) -> None:
     if not fertig:
         daten.update(status="fertig", titel="Keine Aufnahmen",
                      inhalt="An diesem Tag gibt es noch keine ausgewerteten Aufnahmen.")
+        # z. B. alle Aufnahmen des Tages gelöscht: keine Übersichtsdatei im Notizordner
+        (E.NOTIZEN / tag[:7] / f"{tag} Tagesübersicht.md").unlink(missing_ok=True)
     else:
         _schreiben(datei, daten, tag)
         log.info("Tagesübersicht %s: %d Aufnahme(n), %d noch offen", tag, len(fertig), len(offen))
@@ -208,6 +210,12 @@ def pruefen() -> None:
         if _wartet(eintrag):
             continue
         fertig, offen = _ergebnisse_des_tages(tag)
+        if not fertig and not offen and eintrag.get("aufnahmen"):
+            # alle Aufnahmen des Tages im Papierkorb: Übersicht leeren
+            log.info("Tagesübersicht %s: alle Aufnahmen gelöscht", tag)
+            erstellen(tag)
+            z = _zustand_lesen()
+            continue
         if offen or not fertig:
             continue
         if sorted(e["id"] for e in fertig) != sorted(eintrag.get("aufnahmen", [])):

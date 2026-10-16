@@ -15,6 +15,7 @@ data class Uebersicht(
     val inhalt: String?,
     val meldung: String?,
     val aufnahmen: Int,
+    val ids: List<String> = emptyList(),
 ) {
     val anzeige: String
         get() = when (status) {
@@ -29,8 +30,8 @@ data class Uebersicht(
         fun aus(tag: String, text: String): Uebersicht? = try {
             val j = JSONObject(text)
             fun s(name: String) = j.optString(name).takeUnless { j.isNull(name) || it.isBlank() }
-            Uebersicht(tag, j.optString("status", "offen"), s("titel"), s("inhalt"), s("meldung"),
-                j.optJSONArray("aufnahmen")?.length() ?: 0)
+            val ids = j.optJSONArray("aufnahmen")?.let { a -> (0 until a.length()).map { a.optString(it) } }.orEmpty()
+            Uebersicht(tag, j.optString("status", "offen"), s("titel"), s("inhalt"), s("meldung"), ids.size, ids)
         } catch (_: Exception) {
             null
         }
@@ -113,8 +114,9 @@ object Uebersichten {
         val ids = s.optJSONObject("tage") ?: return
         val grenze = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(Date(System.currentTimeMillis() - 3 * 86_400_000L))
         for (tag in ids.keys().asSequence().toList()) {
-            // Ältere Tage ändern sich nicht mehr, sobald sie fertig sind
-            if (tag < grenze && lesen(context, tag)?.status == "fertig") continue
+            // Ältere Tage ändern sich nicht mehr, sobald sie fertig sind (außer nach Löschen oder Zurückholen)
+            val bisher = lesen(context, tag)
+            if (tag < grenze && bisher?.status == "fertig" && !veraltet(context, bisher)) continue
             val inhalt = try {
                 api.herunterladen(ids.getString(tag))
             } catch (e: DriveFehler) {
@@ -124,6 +126,28 @@ object Uebersichten {
             val tmp = File(ordner(context), "$tag.json.tmp")
             tmp.writeBytes(inhalt)
             tmp.renameTo(File(ordner(context), "$tag.json"))
+        }
+    }
+
+    /** Fertige, nicht gelöschte Aufnahmen eines Tages auf dem Handy. */
+    private fun sichtbareFertige(context: Context, tag: String): Set<String> {
+        val papierkorb = de.braininger.app.Ordnung.papierkorb(context)
+        return de.braininger.app.Ablage.alle(context)
+            .filter { it.ordner.name.startsWith(tag) && it.ordner.name !in papierkorb }
+            .filter { Ergebnis.lesen(it.ordner)?.status == "fertig" }
+            .map { it.ordner.name }.toSet()
+    }
+
+    /** Die Übersicht enthält Gelöschte oder es fehlen zurückgeholte Aufnahmen: der Laptop schreibt sie neu. */
+    private fun veraltet(context: Context, u: Uebersicht): Boolean = u.ids.toSet() != sichtbareFertige(context, u.tag)
+
+    /** Tage, an denen alle Aufnahmen im Papierkorb liegen, zeigt die App nicht. */
+    fun sichtbar(context: Context): List<Uebersicht> {
+        val papierkorb = de.braininger.app.Ordnung.papierkorb(context)
+        val aufnahmen = de.braininger.app.Ablage.alle(context).map { it.ordner.name }
+        return alle(context).filter { u ->
+            val tagesIds = aufnahmen.filter { it.startsWith(u.tag) }
+            tagesIds.isEmpty() || tagesIds.any { it !in papierkorb }
         }
     }
 

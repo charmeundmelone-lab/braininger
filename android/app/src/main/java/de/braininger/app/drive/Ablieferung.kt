@@ -71,7 +71,22 @@ object GoogleDocs {
     suspend fun aktualisieren(context: Context) {
         var api: DriveApi? = null
         var ordnerId: String? = null
+        val papierkorb = de.braininger.app.Ordnung.papierkorb(context)
         for (a in Ablage.alle(context)) {
+            if (a.ordner.name in papierkorb) {
+                val docDatei = File(a.ordner, "doc.json")
+                val docId = try { JSONObject(docDatei.readText()).optString("id") } catch (_: Exception) { "" }
+                if (docId.isNotBlank()) {
+                    try {
+                        (api ?: DriveApi(context).also { api = it }).loeschen(docId)
+                    } catch (f: DriveFehler) {
+                        if (f.code == 401) throw f
+                        if (f.code != 404) continue // später noch einmal
+                    }
+                }
+                docDatei.delete()
+                continue
+            }
             val e = Ergebnis.lesen(a.ordner) ?: continue
             if (e.status != "fertig" || e.notizen.isEmpty()) continue
             if (e.notizen.all { it.titel == "Kein verwertbarer Inhalt" }) continue
