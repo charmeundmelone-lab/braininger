@@ -34,6 +34,11 @@ jobs:
           curl -fsSL -o app/src/main/res/font/doto.ttf "https://github.com/google/fonts/raw/main/ofl/doto/Doto%5BROND,wght%5D.ttf"
           curl -fsSL -o app/src/main/assets/lizenzen/doto_OFL.txt "https://github.com/google/fonts/raw/main/ofl/doto/OFL.txt"
 
+      - name: Glyph Developer Kit von Nothing laden
+        run: |
+          mkdir -p app/libs
+          curl -fsSL -o app/libs/glyph-matrix-sdk-2.0.aar "https://raw.githubusercontent.com/Nothing-Developer-Programme/Glyph-Developer-Kit/main/sdk/glyph-matrix-sdk-2.0.aar"
+
       - name: Signierschlüssel bereitstellen
         env:
           KEYSTORE_BASE64: ${{ secrets.BRAININGER_KEYSTORE_BASE64 }}

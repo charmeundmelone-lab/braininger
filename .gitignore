@@ -40,3 +40,6 @@ android/.idea/
 # Wird beim Bauen geladen (Schrift Doto, SIL OFL)
 android/app/src/main/res/font/doto.ttf
 android/app/src/main/assets/lizenzen/
+
+# Glyph Developer Kit (wird beim Bau geladen)
+android/app/libs/

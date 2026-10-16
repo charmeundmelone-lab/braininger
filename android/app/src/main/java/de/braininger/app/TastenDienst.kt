@@ -118,7 +118,7 @@ class TastenDienst : AccessibilityService() {
     }
 
     private fun stoppen() {
-        vibrieren(longArrayOf(0, 300))
+        vibrieren(longArrayOf(0, 220, 120, 220, 120, 220)) // Ende: deutlich, dreimal
         seite(StartActivity.WAS_STOPP)
     }
 

@@ -98,6 +98,7 @@ class AufnahmeDienst : Service() {
         super.onCreate()
         audio = getSystemService(AudioManager::class.java)
         kanaeleAnlegen(this)
+        GlyphLicht.verbinden(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -163,6 +164,7 @@ class AufnahmeDienst : Service() {
         )
         infoSchreiben(ende = null, status = "laeuft")
         BrainingerWidget.aktualisieren(this)
+        GlyphLicht.start()
     }
 
     private fun stueckFertig(datei: File) {
@@ -183,6 +185,7 @@ class AufnahmeDienst : Service() {
         } catch (_: Exception) {
         }
         getSystemService(NotificationManager::class.java).notify(ID_AUFNAHME, benachrichtigung())
+        GlyphLicht.markieren()
     }
 
     private fun mikrofonPruefen() {
@@ -218,6 +221,7 @@ class AufnahmeDienst : Service() {
         }
         recorder = null
         audio.unregisterAudioDeviceCallback(geraeteBeobachter)
+        GlyphLicht.ende()
         // Das Abschließen des letzten Stücks dauert kurz, deshalb nicht im Hauptfaden.
         Thread {
             r.stopp()

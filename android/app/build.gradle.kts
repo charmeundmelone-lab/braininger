@@ -63,6 +63,8 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("com.google.android.gms:play-services-auth:22.0.0")
     implementation("androidx.work:work-runtime-ktx:2.10.0")
+    // Glyph Developer Kit von Nothing: lädt der Bau auf GitHub nach libs/ (keine Lizenz zum Weitergeben im Repo)
+    implementation(files("libs/glyph-matrix-sdk-2.0.aar"))
     implementation("androidx.camera:camera-camera2:1.4.1")
     implementation("androidx.camera:camera-lifecycle:1.4.1")
     implementation("androidx.camera:camera-view:1.4.1")
