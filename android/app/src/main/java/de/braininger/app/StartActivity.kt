@@ -21,6 +21,7 @@ class StartActivity : Activity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        setShowWhenLocked(true) // Essential Key bei gesperrtem Handy: Seite muss sichtbar sein, sonst kein Mikrofon
         super.onCreate(savedInstanceState)
 
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {

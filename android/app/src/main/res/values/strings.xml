@@ -6,6 +6,8 @@
     <string name="knopf_stopp">STOPP</string>
     <string name="knopf_markieren">MARKIEREN</string>
     <string name="knopf_foto">FOTO</string>
+    <string name="tasten_name">Braininger: Essential Key</string>
+    <string name="tasten_beschreibung">Doppelt drücken startet oder stoppt eine Gedanken-Aufnahme, lange drücken markiert die Stelle. Braininger sieht dabei nur Tastendrücke, keine Bildschirminhalte.</string>
     <string name="widget_beschreibung">Aufnahme mit einem Tipp starten</string>
     <string name="kanal_aufnahme">Laufende Aufnahme</string>
     <string name="kanal_hinweise">Hinweise</string>
