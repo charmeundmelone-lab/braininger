@@ -58,7 +58,10 @@ import java.util.Locale
 
 /** Notizen und Text einer Aufnahme. Vorlage einer Notiz per Tipp ändern, Sprechern Namen geben. */
 @Composable
-fun ErgebnisSeite(aufnahme: Aufnahme, ergebnis: Ergebnis?, aktualisierung: Int, zurueck: () -> Unit) {
+fun ErgebnisSeite(
+    aufnahme: Aufnahme, ergebnis: Ergebnis?, aktualisierung: Int,
+    ordnungKnopf: Pair<String, () -> Unit>? = null, zurueck: () -> Unit,
+) {
     BackHandler(onBack = zurueck)
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -77,6 +80,10 @@ fun ErgebnisSeite(aufnahme: Aufnahme, ergebnis: Ergebnis?, aktualisierung: Int, 
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 8.dp)) {
             TextButton(onClick = zurueck) { Text("‹ ZURÜCK", color = Weiss, fontWeight = FontWeight.Bold) }
+            Spacer(Modifier.weight(1f))
+            ordnungKnopf?.let { (text, aktion) ->
+                TextButton(onClick = aktion) { Text(text, color = Grau, fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+            }
         }
         Text(aufnahme.modus.anzeige.uppercase(), fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 22.sp, color = Weiss)
         Text(

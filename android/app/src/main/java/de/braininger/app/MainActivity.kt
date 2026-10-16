@@ -77,6 +77,9 @@ import de.braininger.app.drive.Ergebnis
 import de.braininger.app.drive.ErgebnisAbruf
 import de.braininger.app.drive.ErgebnisAuftrag
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.activity.compose.BackHandler
 import de.braininger.app.drive.GoogleKonto
 import de.braininger.app.drive.HochladenAuftrag
 import de.braininger.app.drive.UploadStand
@@ -135,6 +138,12 @@ private fun Startseite(aktualisierung: Int) {
     var zeigeFragen by remember { mutableStateOf(false) }
     var vonFragen by remember { mutableStateOf(false) }
     var abrufZaehler by remember { mutableIntStateOf(0) }
+    val ordnungStand by Ordnung.stand.collectAsStateWithLifecycle()
+    var archiviert by remember { mutableStateOf(emptySet<String>()) }
+    var auswahl by remember { mutableStateOf(emptySet<String>()) }
+    var zeigeArchiv by remember { mutableStateOf(false) }
+    var vonArchiv by remember { mutableStateOf(false) }
+    var rueckgaengig by remember { mutableStateOf<Rueckgaengig?>(null) }
     val scope = rememberCoroutineScope()
 
     fun pruefen() {
@@ -145,6 +154,7 @@ private fun Startseite(aktualisierung: Int) {
         uploads = aufnahmen.associate { it.ordner.name to UploadStand.lesen(it.ordner) }
         ergebnisse = aufnahmen.associate { it.ordner.name to Ergebnis.lesen(it.ordner) }
         googleFehlt = HochladenAuftrag.anmeldungFehlt(context)
+        archiviert = Ordnung.archivierte(context)
     }
 
     fun angemeldet() {
@@ -181,7 +191,14 @@ private fun Startseite(aktualisierung: Int) {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { pruefen() }
 
-    LaunchedEffect(aktualisierung, zustand.laeuft, zustand.stueckeFertig) { pruefen() }
+    LaunchedEffect(aktualisierung, zustand.laeuft, zustand.stueckeFertig, ordnungStand) { pruefen() }
+    LaunchedEffect(Unit) {
+        try {
+            OrdnungSicherung.wiederherstellen(context) // nach Neuinstallation aus dem Drive
+        } catch (_: Exception) {
+            // kein Netz oder nicht angemeldet: beim nächsten Start wieder
+        }
+    }
     LaunchedEffect(Unit) {
         val fehlend = listOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS, Manifest.permission.CAMERA)
             .filter { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
@@ -231,19 +248,49 @@ private fun Startseite(aktualisierung: Int) {
     }
     val offeneAufnahme = offen?.let { name -> aufnahmen.firstOrNull { it.ordner.name == name } }
     if (offeneAufnahme != null) {
-        ErgebnisSeite(offeneAufnahme, ergebnisse[offeneAufnahme.ordner.name], aktualisierung + abrufZaehler) {
+        val id = offeneAufnahme.ordner.name
+        fun zurueckZurListe() {
             offen = null
-            // aus einer Antwort geöffnet: zurück zu den Fragen
+            // aus einer Antwort oder dem Archiv geöffnet: dorthin zurück
             if (vonFragen) {
                 vonFragen = false; zeigeFragen = true
             }
+            if (vonArchiv) {
+                vonArchiv = false; zeigeArchiv = true
+            }
         }
+        val ordnungKnopf: Pair<String, () -> Unit>? = when {
+            offeneAufnahme.status == "laeuft" -> null
+            Ordnung.vorne(offeneAufnahme, archiviert) -> "ARCHIVIEREN" to {
+                Ordnung.archivieren(context, listOf(id))
+                zurueckZurListe()
+                rueckgaengig = Rueckgaengig("Archiviert") { Ordnung.zurueckholen(context, listOf(id)) }
+            }
+            id in archiviert && Ordnung.frisch(offeneAufnahme) -> "NACH VORNE" to {
+                Ordnung.zurueckholen(context, listOf(id))
+                offen = null; vonFragen = false; vonArchiv = false
+                rueckgaengig = Rueckgaengig("Wieder vorne") { Ordnung.archivieren(context, listOf(id)) }
+            }
+            else -> null
+        }
+        ErgebnisSeite(offeneAufnahme, ergebnisse[id], aktualisierung + abrufZaehler, ordnungKnopf) { zurueckZurListe() }
         return
     }
-
-    val treffer = remember(aufnahmen, ergebnisse, suche) {
-        aufnahmen.mapNotNull { a -> Suche.treffer(a, ergebnisse[a.ordner.name], suche)?.let { a to it } }
+    if (zeigeArchiv) {
+        ArchivSeite(aufnahmen, uploads, ergebnisse, archiviert, oeffnen = { id ->
+            zeigeArchiv = false; vonArchiv = true; offen = id; ergebnisseHolen()
+        }) { zeigeArchiv = false }
+        return
     }
+    BackHandler(enabled = auswahl.isNotEmpty()) { auswahl = emptySet() }
+
+    // Suche findet alles, auch Archiviertes. Ohne Suche stehen vorne nur die letzten 7 Tage.
+    val treffer = remember(aufnahmen, ergebnisse, suche, archiviert) {
+        if (suche.isBlank()) aufnahmen.filter { Ordnung.vorne(it, archiviert) }.map { it to "" }
+        else aufnahmen.mapNotNull { a -> Suche.treffer(a, ergebnisse[a.ordner.name], suche)?.let { a to it } }
+    }
+    val imArchiv = aufnahmen.count { !Ordnung.vorne(it, archiviert) }
+    Box(Modifier.fillMaxSize().background(Schwarz)) {
     // Die ganze Seite scrollt, damit Aufgaben, Vorschläge und Aufnahmen immer Platz haben
     LazyColumn(
         Modifier
@@ -324,6 +371,9 @@ private fun Startseite(aktualisierung: Int) {
         }
         if (aufnahmen.isEmpty()) {
             Text("Noch keine Aufnahmen.", color = Grau, fontSize = 14.sp)
+        } else if (suche.isBlank() && treffer.isEmpty()) {
+            Text("Keine Aufnahmen der letzten ${Ordnung.TAGE_VORNE} Tage.", color = Grau, fontSize = 14.sp,
+                 modifier = Modifier.padding(vertical = 8.dp))
         }
         if (suche.isNotBlank()) {
             Text(
@@ -334,9 +384,18 @@ private fun Startseite(aktualisierung: Int) {
         }
         }
             items(treffer, key = { it.first.ordner.name }) { (a, ausschnitt) ->
-                AufnahmeZeile(a, uploads[a.ordner.name], ergebnisse[a.ordner.name]) {
-                    offen = a.ordner.name
-                    ergebnisseHolen()
+                val id = a.ordner.name
+                AufnahmeZeile(
+                    a, uploads[id], ergebnisse[id],
+                    ausgewaehlt = id in auswahl,
+                    lang = if (a.status == "laeuft") null else ({ auswahl = auswahl + id }),
+                ) {
+                    if (auswahl.isNotEmpty()) {
+                        if (a.status != "laeuft") auswahl = if (id in auswahl) auswahl - id else auswahl + id
+                    } else {
+                        offen = id
+                        ergebnisseHolen()
+                    }
                 }
                 if (suche.isNotBlank() && ausschnitt.isNotBlank()) {
                     Text(
@@ -346,7 +405,14 @@ private fun Startseite(aktualisierung: Int) {
                 }
                 HorizontalDivider(color = Linie)
             }
+        if (suche.isBlank() && imArchiv > 0) {
+            item {
+                Spacer(Modifier.height(16.dp))
+                SeitenKnopf("ARCHIV ($imArchiv)", Modifier.fillMaxWidth()) { auswahl = emptySet(); zeigeArchiv = true }
+            }
+        }
         item {
+        Spacer(Modifier.height(if (auswahl.isNotEmpty() || rueckgaengig != null) 90.dp else 0.dp))
         Text(
             "Version ${BuildConfig.VERSION_NAME}",
             color = Grau, fontSize = 11.sp,
@@ -354,6 +420,21 @@ private fun Startseite(aktualisierung: Int) {
             textAlign = TextAlign.Center,
         )
         }
+    }
+    if (auswahl.isNotEmpty()) {
+        AuswahlLeiste(auswahl.size, abbrechen = { auswahl = emptySet() }, Modifier.align(Alignment.BottomCenter)) {
+            TextButton(onClick = {
+                val ids = auswahl.toList()
+                Ordnung.archivieren(context, ids)
+                auswahl = emptySet()
+                rueckgaengig = Rueckgaengig(if (ids.size == 1) "Archiviert" else "${ids.size} archiviert") {
+                    Ordnung.zurueckholen(context, ids)
+                }
+            }) { Text("ARCHIVIEREN", color = Weiss, fontWeight = FontWeight.Bold) }
+        }
+    } else {
+        RueckgaengigLeiste(rueckgaengig, Modifier.align(Alignment.BottomCenter)) { rueckgaengig = null }
+    }
     }
 
     if (fragZustimmung) {
@@ -374,6 +455,7 @@ private fun Startseite(aktualisierung: Int) {
 }
 
 private val Color111 = androidx.compose.ui.graphics.Color(0xFF111111)
+private val Ausgewaehlt = androidx.compose.ui.graphics.Color(0xFF262626)
 
 @Composable
 private fun GrosserKnopf(text: String, modifier: Modifier, aktiv: Boolean, onClick: () -> Unit) {
@@ -467,7 +549,7 @@ private fun Hinweis(text: String, knopf: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun SeitenKnopf(text: String, modifier: Modifier, onClick: () -> Unit) {
+internal fun SeitenKnopf(text: String, modifier: Modifier, onClick: () -> Unit) {
     Row(
         modifier
             .border(1.dp, Linie, RoundedCornerShape(16.dp))
@@ -481,8 +563,12 @@ private fun SeitenKnopf(text: String, modifier: Modifier, onClick: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun AufnahmeZeile(a: Aufnahme, upload: UploadStand?, ergebnis: Ergebnis?, oeffnen: () -> Unit) {
+internal fun AufnahmeZeile(
+    a: Aufnahme, upload: UploadStand?, ergebnis: Ergebnis?,
+    ausgewaehlt: Boolean = false, lang: (() -> Unit)? = null, oeffnen: () -> Unit,
+) {
     val datum = remember(a.start) { SimpleDateFormat("EE dd.MM. HH:mm", Locale.GERMANY).format(Date(a.start)) }
     val statusText = when {
         ergebnis != null && upload?.abgeschlossen == true ->
@@ -497,9 +583,17 @@ private fun AufnahmeZeile(a: Aufnahme, upload: UploadStand?, ergebnis: Ergebnis?
         else -> a.status
     }
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = oeffnen).padding(vertical = 12.dp),
+        Modifier
+            .fillMaxWidth()
+            .background(if (ausgewaehlt) Ausgewaehlt else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(8.dp))
+            .combinedClickable(onClick = oeffnen, onLongClick = lang)
+            .padding(vertical = 12.dp, horizontal = if (ausgewaehlt) 8.dp else 0.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        if (ausgewaehlt) {
+            Text("✓", color = Weiss, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.width(10.dp))
+        }
         Column(Modifier.weight(1f)) {
             Text("${a.modus.anzeige} · $datum", color = Weiss, fontSize = 15.sp)
             Text(
