@@ -9,6 +9,8 @@ import de.braininger.app.Ablage
 import de.braininger.app.Aufnahme
 import de.braininger.app.MainActivity
 import de.braininger.app.R
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
@@ -68,7 +70,12 @@ object WarteHinweis {
 object GoogleDocs {
     private const val DOC = "application/vnd.google-apps.document"
 
-    suspend fun aktualisieren(context: Context) {
+    // App und Hintergrund-Abruf rufen das gleichzeitig auf. Ohne Sperre entstehen zwei Docs, gemerkt wird nur eins.
+    private val sperre = Mutex()
+
+    suspend fun aktualisieren(context: Context) = sperre.withLock { aktualisierenOhneSperre(context) }
+
+    private suspend fun aktualisierenOhneSperre(context: Context) {
         var api: DriveApi? = null
         var ordnerId: String? = null
         val papierkorb = de.braininger.app.Ordnung.papierkorb(context)
