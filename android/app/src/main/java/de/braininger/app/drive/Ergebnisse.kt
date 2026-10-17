@@ -17,6 +17,7 @@ import de.braininger.app.AufgabenAktion
 import de.braininger.app.AufgabenSpeicher
 import de.braininger.app.Vorschlag
 import de.braininger.app.MainActivity
+import de.braininger.app.Ordnung
 import de.braininger.app.R
 import org.json.JSONObject
 import java.io.File
@@ -311,6 +312,36 @@ object AudioAufraeumen {
     }
 }
 
+/**
+ * Nach 30 Tagen im Papierkorb ist eine Aufnahme überall weg. Die App löscht ihren Eingang-Ordner im Drive
+ * endgültig, mit allem darin und ohne Google-Papierkorb (Drive API files.delete: bei einem Ordner auch alles darin,
+ * was dem Nutzer gehört), dazu die Tagesübersicht, wenn vom Tag nichts mehr übrig ist, und den Ordner auf dem Handy.
+ * In ordnung.json steht sie danach als "weg": Daran erkennt der Laptop, dass er seine Kopie löschen soll.
+ */
+object EndgueltigLoeschen {
+    suspend fun aufraeumen(context: Context) {
+        val faellig = Ordnung.faellig(context)
+        if (faellig.isEmpty()) return
+        val api = DriveApi(context)
+        val alle = Ablage.alle(context).associateBy { it.ordner.name }
+        val erledigt = mutableListOf<String>()
+        try {
+            for (id in faellig) {
+                alle[id]?.let { a ->
+                    UploadStand.lesen(a.ordner).ordnerId?.let { api.loeschen(it) }
+                    a.ordner.deleteRecursively()
+                }
+                erledigt += id
+            }
+        } finally {
+            // was schon gelöscht ist, gilt als weg, auch wenn danach ein Fehler kam (der Rest beim nächsten Mal)
+            Ordnung.alsWeg(context, erledigt)
+        }
+        val uebrig = Ablage.alle(context).map { it.ordner.name.take(10) }.toSet()
+        for (tag in erledigt.map { it.take(10) }.toSet() - uebrig) Uebersichten.tagEntfernen(context, api, tag)
+    }
+}
+
 /** Schaut alle 15 Minuten (kürzer erlaubt Android nicht) nach neuen Ergebnissen, auch wenn die App zu ist. */
 class ErgebnisAuftrag(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     companion object {
@@ -332,6 +363,7 @@ class ErgebnisAuftrag(context: Context, params: WorkerParameters) : CoroutineWor
         nebenbei { Uebersichten.abrufen(applicationContext) }
         nebenbei { if (Fragen.abrufen(applicationContext)) Fragen.benachrichtigen(applicationContext) }
         nebenbei { GoogleDocs.aktualisieren(applicationContext) }
+        nebenbei { EndgueltigLoeschen.aufraeumen(applicationContext) }
         Result.success()
     } catch (_: AnmeldungNoetig) {
         Result.success() // Anmeldung meldet schon der Upload

@@ -56,8 +56,8 @@ fun AufgabenBereich() {
     val stand by AufgabenSpeicher.stand.collectAsState()
     val ordnungStand by Ordnung.stand.collectAsState()
     val vorschlaege = remember(stand, ordnungStand) {
-        val papierkorb = Ordnung.papierkorb(context)
-        AufgabenSpeicher.vorschlaege(context).filter { it.aufnahme !in papierkorb }
+        val geloescht = Ordnung.ausgeblendet(context)
+        AufgabenSpeicher.vorschlaege(context).filter { it.aufnahme !in geloescht }
     }
     val offene = remember(stand) { AufgabenSpeicher.offene(context) }
     val texte = remember(stand) { AufgabenSpeicher.alle(context).associate { it.id to it.text } }

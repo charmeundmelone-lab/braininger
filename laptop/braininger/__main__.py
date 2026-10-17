@@ -62,10 +62,10 @@ def bereite_aufnahmen() -> list[aufnahme_modul.Aufnahme]:
     except OSError:
         return []  # Drive für Desktop noch nicht gestartet oder offline
     fertig = []
-    geloescht = ordnung.papierkorb()
+    geloescht = ordnung.geloescht()
     for o in ordner:
         if o.name in geloescht:
-            continue  # im Papierkorb der App: nicht (weiter) auswerten
+            continue  # im Papierkorb der App oder endgültig gelöscht: nicht (weiter) auswerten
         a = aufnahme_modul.lesen(o)
         if a and a.abgeschlossen:
             fertig.append(a)

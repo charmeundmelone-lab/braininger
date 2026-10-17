@@ -214,6 +214,7 @@ private fun Startseite(aktualisierung: Int) {
                 ErgebnisAbruf.abrufen(context)
                 AudioAufraeumen.aufraeumen(context)
                 de.braininger.app.drive.GoogleDocs.aktualisieren(context)
+                de.braininger.app.drive.EndgueltigLoeschen.aufraeumen(context)
             } catch (_: Exception) {
                 // kein Netz oder nicht angemeldet: beim nächsten Mal wieder
             }

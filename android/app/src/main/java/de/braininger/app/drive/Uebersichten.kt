@@ -75,6 +75,16 @@ object Uebersichten {
         return id
     }
 
+    /** Vom Tag ist nichts mehr übrig (alles endgültig gelöscht): Übersicht im Drive und auf dem Handy entfernen. */
+    suspend fun tagEntfernen(context: Context, api: DriveApi, tag: String) {
+        val s = stand(context)
+        val ids = s.optJSONObject("tage")
+        ids?.optString(tag)?.takeIf { it.isNotBlank() }?.let { api.loeschen(it) }
+        ids?.remove(tag)
+        speichern(context, s)
+        File(ordner(context), "$tag.json").delete()
+    }
+
     fun auftragOffen(context: Context): Boolean {
         val s = stand(context)
         val nummer = s.optInt("auftrag_nummer")

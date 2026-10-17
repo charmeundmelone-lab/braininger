@@ -26,7 +26,9 @@ import java.util.Locale
  * Löschen legt sie 30 Tage in den Papierkorb: ab da zählt sie nirgends mehr mit (App und Laptop), lässt sich
  * aber zurückholen. Der Laptop liest die Datei über G: (Papierkorb ausnehmen, Notizdateien wegräumen).
  *
- * Datei: files/ordnung/ordnung.json {version, aufnahmen: {<id>: {zustand: "archiv" | "papierkorb", seit, vorher?}}}.
+ * Nach 30 Tagen ist sie überall weg (EndgueltigLoeschen), der Eintrag heißt dann "weg".
+ *
+ * Datei: files/ordnung/ordnung.json {version, aufnahmen: {<id>: {zustand: "archiv" | "papierkorb" | "weg", seit, vorher?}}}.
  * vorher = "archiv": lag vor dem Löschen im Archiv und kommt beim Zurückholen dorthin zurück.
  * Sicherung im Drive unter Braininger/Ordnung/ordnung.json (die App legt sie an, siehe drive.file).
  */
@@ -72,9 +74,30 @@ object Ordnung {
         }.toMap()
     }
 
+    /** Papierkorb und endgültig gelöschte: zählen nirgends mehr mit (Fragen, Vorschläge). */
+    fun ausgeblendet(context: Context): Set<String> {
+        val a = lesen(context)
+        return a.keys().asSequence().filter { a.optJSONObject(it)?.optString("zustand") in setOf("papierkorb", "weg") }.toSet()
+    }
+
+    private fun fristMs(geloescht: Long) = TAGE_PAPIERKORB * TAG_MS
+
     /** Ganze Tage, bis eine gelöschte Aufnahme endgültig weg ist (mindestens 0). */
     fun restTage(geloescht: Long, jetzt: Long = System.currentTimeMillis()) =
-        (TAGE_PAPIERKORB - ((jetzt - geloescht) / TAG_MS).toInt()).coerceAtLeast(0)
+        ((fristMs(geloescht) - (jetzt - geloescht) + TAG_MS - 1) / TAG_MS).toInt().coerceAtLeast(0)
+
+    /** Aufnahmen, deren Frist im Papierkorb abgelaufen ist. */
+    fun faellig(context: Context, jetzt: Long = System.currentTimeMillis()): Set<String> =
+        papierkorb(context).filter { (_, seit) -> jetzt - seit >= fristMs(seit) }.keys
+
+    /** Endgültig gelöscht. Der Eintrag bleibt, damit der Laptop seine Kopie löscht und sie nie neu auswertet. */
+    fun alsWeg(context: Context, ids: Collection<String>) {
+        if (ids.isEmpty()) return
+        val a = lesen(context)
+        val seit = iso.format(Date())
+        for (id in ids) a.put(id, JSONObject().put("zustand", "weg").put("seit", seit))
+        speichern(context, a)
+    }
 
     /** Neu genug für vorne (laufende Aufnahmen immer). */
     fun frisch(a: Aufnahme, jetzt: Long = System.currentTimeMillis()) =

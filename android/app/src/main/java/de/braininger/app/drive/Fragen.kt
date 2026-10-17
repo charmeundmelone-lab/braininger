@@ -73,10 +73,10 @@ object Fragen {
         return (0 until a.length()).map { Antwort.aus(a.getJSONObject(it)) }
     }
 
-    /** Verlauf ohne Antworten, die sich auf Aufnahmen im Papierkorb stützen. */
+    /** Verlauf ohne Antworten, die sich auf gelöschte Aufnahmen stützen (Papierkorb oder endgültig weg). */
     fun sichtbarerVerlauf(context: Context): List<Antwort> {
-        val papierkorb = de.braininger.app.Ordnung.papierkorb(context)
-        return verlauf(context).filter { a -> a.quellen.none { it.id in papierkorb } }
+        val geloescht = de.braininger.app.Ordnung.ausgeblendet(context)
+        return verlauf(context).filter { a -> a.quellen.none { it.id in geloescht } }
     }
 
     suspend fun stellen(context: Context, frage: String) {
