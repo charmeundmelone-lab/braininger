@@ -5,8 +5,9 @@ an (drive.file, siehe Frühtest a), der Laptop überschreibt antwort.json nur an
 antwort.json: version, nummer, frage, status (in_arbeit | wartet | fertig | fehler), antwort (Markdown),
 quellen [{id, datum, kurz}], meldung, aktualisiert.
 
-Claude bekommt alle Notizen (neueste zuerst, bis zur Grenze) und dazu den ganzen Text der Aufnahmen,
-in denen Wörter der Frage vorkommen (für Details, die nicht in den Notizen stehen).
+Claude bekommt alle Notizen und dazu den ganzen Text der Aufnahmen, in denen Wörter der Frage vorkommen
+(für Details, die nicht in den Notizen stehen). Werden die Notizen zu lang (ab ca. 140 Aufnahmen), kommen die
+neuesten und die zur Frage passenden älteren mit, der Rest fällt weg (siehe _notizen_auswaehlen).
 """
 import json
 import logging
@@ -86,35 +87,80 @@ def _fertige() -> list[tuple[str, dict]]:
     return aus
 
 
-def kontext(frage: str) -> str:
-    teile, laenge = ["# Notizen aller Aufnahmen (neueste zuerst)"], 0
-    fertige = _fertige()
-    for aufnahme_id, e in fertige:
-        namen = ", ".join(f"{s['kennung']} = {s['name']}" for s in e.get("sprecher") or [])
-        block = [f"## Aufnahme {aufnahme_id} · {_datum(aufnahme_id)} · {aufnahme_id.rsplit('_', 1)[-1]}"
-                 + (f" · Sprecher: {namen}" if namen else ""), f"Kurz: {e.get('kurz', '')}"]
-        for n in e["notizen"]:
-            v = NACH_KENNUNG.get(n.get("vorlage"))
-            block.append(f"### {n.get('titel', '')} ({v.name if v else n.get('vorlage')})\n{n.get('inhalt', '').strip()}")
-        text = "\n\n".join(block)
-        if laenge + len(text) > MAX_NOTIZEN_ZEICHEN:
-            teile.append("(Ältere Aufnahmen sind aus Platzgründen weggelassen.)")
+def _suchwoerter(frage: str) -> set[str]:
+    """Wörter der Frage ohne Füllwörter, lange auf 6 Buchstaben gekürzt (findet so auch „Schuh“ zu „Schuhe“)."""
+    return {w[:6] for w in re.findall(r"\w{3,}", frage.casefold()) if w not in FUELLWOERTER}
+
+
+def _notizblock(aufnahme_id: str, e: dict) -> str:
+    namen = ", ".join(f"{s['kennung']} = {s['name']}" for s in e.get("sprecher") or [])
+    block = [f"## Aufnahme {aufnahme_id} · {_datum(aufnahme_id)} · {aufnahme_id.rsplit('_', 1)[-1]}"
+             + (f" · Sprecher: {namen}" if namen else ""), f"Kurz: {e.get('kurz', '')}"]
+    for n in e["notizen"]:
+        v = NACH_KENNUNG.get(n.get("vorlage"))
+        block.append(f"### {n.get('titel', '')} ({v.name if v else n.get('vorlage')})\n{n.get('inhalt', '').strip()}")
+    return "\n\n".join(block)
+
+
+def _text(aufnahme_id: str) -> str:
+    try:
+        return (E.AUFNAHMEN_LOKAL / aufnahme_id / "text.txt").read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def _notizen_auswaehlen(bloecke: list[tuple[str, str]], treffer: dict[str, int], grenze: int) -> set[str]:
+    """Welche Notizblöcke Claude bekommt. Passt alles, dann alle. Sonst: die neuesten bis zur halben Grenze,
+    dann ältere mit Wörtern der Frage (meiste Treffer zuerst), mit dem Rest wieder die neuesten."""
+    if sum(len(b) for _, b in bloecke) <= grenze:
+        return {i for i, _ in bloecke}
+    laenge, gewaehlt = 0, set()
+
+    def nehmen(aufnahme_id: str, block: str, bis: int) -> None:
+        nonlocal laenge
+        if aufnahme_id not in gewaehlt and laenge + len(block) <= bis:
+            gewaehlt.add(aufnahme_id)
+            laenge += len(block)
+
+    for i, b in bloecke:  # neueste zuerst
+        if laenge + len(b) > grenze // 2:
             break
-        teile.append(text)
-        laenge += len(text)
+        nehmen(i, b, grenze // 2)
+    passende = sorted((-treffer.get(i, 0), n, i, b) for n, (i, b) in enumerate(bloecke) if treffer.get(i))
+    for _, _, i, b in passende:
+        nehmen(i, b, grenze)
+    for i, b in bloecke:
+        nehmen(i, b, grenze)
+    return gewaehlt
+
+
+def kontext(frage: str, grenze: int = MAX_NOTIZEN_ZEICHEN) -> str:
+    fertige = _fertige()
+    woerter = _suchwoerter(frage)
+    bloecke = [(i, _notizblock(i, e)) for i, e in fertige]
+    texte = {i: _text(i) for i, _ in fertige} if woerter else {}
+    treffer = {}
+    for i, b in bloecke:
+        if woerter:
+            inhalt = (b + "\n" + texte.get(i, "")).casefold()
+            treffer[i] = sum(inhalt.count(w) for w in woerter)
+    gewaehlt = _notizen_auswaehlen(bloecke, treffer, grenze)
+
+    teile = ["# Notizen aller Aufnahmen (neueste zuerst)"]
+    teile += [b for i, b in bloecke if i in gewaehlt]
+    if len(gewaehlt) < len(bloecke):
+        teile.append(f"({len(bloecke) - len(gewaehlt)} weitere Aufnahmen ohne Bezug zur Frage sind aus Platzgründen "
+                     "weggelassen.)")
+        log.info("Fragen: %d von %d Aufnahmen im Kontext", len(gewaehlt), len(bloecke))
 
     # ganze Texte der Aufnahmen, in denen Wörter der Frage vorkommen (meiste Treffer zuerst)
-    woerter = {w for w in re.findall(r"\w{3,}", frage.casefold()) if w not in FUELLWOERTER}
     if woerter:
         kandidaten = []
-        for aufnahme_id, e in fertige:
-            try:
-                t = (E.AUFNAHMEN_LOKAL / aufnahme_id / "text.txt").read_text(encoding="utf-8")
-            except OSError:
-                continue
-            treffer = sum(t.casefold().count(w) for w in woerter)
-            if treffer:
-                kandidaten.append((treffer, aufnahme_id, t))
+        for aufnahme_id, _ in fertige:
+            t = texte.get(aufnahme_id, "")
+            n = sum(t.casefold().count(w) for w in woerter)
+            if n:
+                kandidaten.append((n, aufnahme_id, t))
         laenge = 0
         for treffer, aufnahme_id, t in sorted(kandidaten, reverse=True):
             if laenge + len(t) > MAX_TEXT_ZEICHEN:
