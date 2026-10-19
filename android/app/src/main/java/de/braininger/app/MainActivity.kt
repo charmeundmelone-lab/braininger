@@ -125,6 +125,7 @@ private fun Startseite(aktualisierung: Int) {
     var mikroErlaubt by remember { mutableStateOf(false) }
     var hinweiseErlaubt by remember { mutableStateOf(false) }
     var akkuFrei by remember { mutableStateOf(false) }
+    var tasteAus by remember { mutableStateOf(false) }
     var fragZustimmung by remember { mutableStateOf(false) }
     var aufnahmen by remember { mutableStateOf(emptyList<Aufnahme>()) }
     var jetzt by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -153,6 +154,7 @@ private fun Startseite(aktualisierung: Int) {
         mikroErlaubt = context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         hinweiseErlaubt = context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         akkuFrei = context.getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(context.packageName)
+        tasteAus = !TastenWache.pruefen(context, benachrichtigen = false)
         aufnahmen = Ablage.alle(context)
         uploads = aufnahmen.associate { it.ordner.name to UploadStand.lesen(it.ordner) }
         ergebnisse = aufnahmen.associate { it.ordner.name to Ergebnis.lesen(it.ordner) }
@@ -370,6 +372,12 @@ private fun Startseite(aktualisierung: Int) {
                 @SuppressLint("BatteryLife")
                 val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}"))
                 context.startActivity(intent)
+            }
+        }
+
+        if (tasteAus) {
+            Hinweis("Die Essential Key ist aus: Android hat die Bedienungshilfe für die Taste ausgeschaltet.", "EINSCHALTEN") {
+                TastenWache.einstellungenOeffnen(context)
             }
         }
 

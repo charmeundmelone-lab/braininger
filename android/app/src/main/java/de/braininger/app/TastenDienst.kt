@@ -1,6 +1,7 @@
 package de.braininger.app
 
 import android.accessibilityservice.AccessibilityService
+import android.content.Context
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
@@ -30,6 +31,16 @@ class TastenDienst : AccessibilityService() {
         private const val DOPPEL_MS = 450L
         private const val LANG_MS = 700L
         private const val START_GEDULD_MS = 4000L
+
+        /** Kleines Protokoll in files/tasten.log, nur Essential-Key-Ereignisse. */
+        fun protokoll(context: Context, text: String) {
+            try {
+                val f = File(context.filesDir, "tasten.log")
+                if (f.length() > 100_000) f.delete()
+                f.appendText(SimpleDateFormat("dd.MM. HH:mm:ss", Locale.ROOT).format(Date()) + " " + text + "\n")
+            } catch (_: Exception) {
+            }
+        }
     }
 
     private val haupt = Handler(Looper.getMainLooper())
@@ -136,13 +147,5 @@ class TastenDienst : AccessibilityService() {
         }
     }
 
-    /** Kleines Protokoll in files/tasten.log, nur Essential-Key-Ereignisse. */
-    private fun protokoll(text: String) {
-        try {
-            val f = File(filesDir, "tasten.log")
-            if (f.length() > 100_000) f.delete()
-            f.appendText(SimpleDateFormat("dd.MM. HH:mm:ss", Locale.ROOT).format(Date()) + " " + text + "\n")
-        } catch (_: Exception) {
-        }
-    }
+    private fun protokoll(text: String) = protokoll(this, text)
 }

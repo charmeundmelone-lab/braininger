@@ -331,6 +331,7 @@ class AufgabenAktion : BroadcastReceiver() {
 class NeustartEmpfaenger : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         Erinnerungen.allePlanen(context)
+        TastenWache.pruefen(context) // nach einem App-Update schaltet Android die Bedienungshilfe manchmal ab
     }
 }
 

@@ -356,6 +356,7 @@ class ErgebnisAuftrag(context: Context, params: WorkerParameters) : CoroutineWor
     }
 
     override suspend fun doWork(): Result = try {
+        de.braininger.app.TastenWache.pruefen(applicationContext) // braucht kein Netz, deshalb zuerst
         ErgebnisAbruf.benachrichtigen(applicationContext, ErgebnisAbruf.abrufen(applicationContext))
         AudioAufraeumen.aufraeumen(applicationContext)
         WarteHinweis.pruefen(applicationContext)
