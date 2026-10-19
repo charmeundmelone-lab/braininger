@@ -67,9 +67,9 @@ object TastenWache {
         return false
     }
 
-    /** Seite mit dem Schalter der Braininger-Bedienungshilfe (gibt es ab Android 13). */
+    /** Seite mit dem Schalter der Braininger-Bedienungshilfe (Android 13+, Konstante nicht im öffentlichen SDK). */
     fun einstellungen(context: Context): Intent =
-        Intent(Settings.ACTION_ACCESSIBILITY_DETAILS_SETTINGS)
+        Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
             .putExtra(Intent.EXTRA_COMPONENT_NAME, dienst(context).flattenToString())
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
