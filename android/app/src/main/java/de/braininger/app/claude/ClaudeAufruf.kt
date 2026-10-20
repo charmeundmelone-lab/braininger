@@ -59,6 +59,7 @@ object ClaudeAufruf {
         bilder: List<File> = emptyList(),
         maxTokens: Long = 16_000,
         geschaetzt: Double = 0.02,
+        effort: OutputConfig.Effort? = null,
     ): Antwort = withContext(Dispatchers.IO) {
         val schluessel = Schluessel.lesen(context) ?: throw ClaudeFehler("Kein Claude-Schlüssel eingetragen.")
         if (!Kosten.frei(context, geschaetzt)) throw DeckelErreicht()
@@ -79,7 +80,8 @@ object ClaudeAufruf {
                 .maxTokens(maxTokens)
                 .systemOfTextBlockParams(systemBloecke)
                 .addUserMessageOfBlockParams(bloecke)
-                .outputConfig(OutputConfig.builder().format(JsonOutputFormat.builder().schema(schemaWert).build()).build())
+                .outputConfig(OutputConfig.builder().format(JsonOutputFormat.builder().schema(schemaWert).build())
+                    .apply { effort?.let { effort(it) } }.build())
                 .build()
 
             val nachricht = try {

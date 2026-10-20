@@ -25,18 +25,26 @@ VORLAGEN = [
         "Ordne alles nach Lebensbereichen, immer in dieser Reihenfolge, jeder als eigene Überschrift:\n"
         "## Familie & Haushalt\n## Musik & Gigs\n## Ich selbst\n## Projekte & Ideen\n## Finanzen Geschäft\n"
         "Bereiche ohne Inhalt lässt du ganz weg. Was zu keinem Bereich passt, kommt zum nächstliegenden.\n"
-        "„Ich selbst“ ist für Gefühle, Gesundheit, Stimmung und Gedanken über mein Leben; dort darf es ein kurzer "
-        "Absatz wie im Tagebuch sein. Sonst Stichpunkte.\n"
-        "So ausführlich wie nötig: Füllwörter, Wiederholungen, Selbstkorrekturen und Nebensächliches ohne Folgen "
-        "fallen weg. Jede Information, jeder Name, jede Zahl, jedes Datum und jedes Gefühl bleibt. Typische "
-        "Formulierungen und treffende Sätze von mir übernimmst du wörtlich in Anführungszeichen.\n"
+        "„Ich selbst“ ist für Gefühle, Gesundheit, Stimmung und Gedanken über mein Leben.\n"
+        "Sortier nach dem Inhalt, nicht nach der Reihenfolge in der Aufnahme: Familie, Kinder, Haushalt, Einkauf, "
+        "Familientermine → Familie & Haushalt. Auftritte, Kunden, Akquise, Technik für Auftritte, Proben → Musik & "
+        "Gigs. Gefühle, Ängste, Muster, ADHS, Gesundheit → Ich selbst. Eigene Projekte (z. B. Braininger), Apps, "
+        "Ideen → Projekte & Ideen. Rechnungen, Ausgaben, Käufe, Steuer, Geldplanung → Finanzen Geschäft. Die "
+        "Überschriften stehen immer in der oben genannten Reihenfolge.\n"
+        "Unter jeder Überschrift stehen meine eigenen Sätze, geglättet nach der Regel „Originalton“: einzelne "
+        "Gedanken als Stichpunkte in ganzen Sätzen, zusammenhängende Gedanken als kurzer Absatz. Keine "
+        "Stichwort-Zusammenfassung in fremden Worten und keine Anführungszeichen um meine Sätze, die ganze Notiz ist "
+        "ja von mir.\n"
+        "So ausführlich wie nötig: Wiederholungen, Selbstkorrekturen und Nebensächliches ohne Folgen fallen weg. Jede "
+        "Information, jeder Name, jede Zahl, jedes Datum und jedes Gefühl bleibt.\n"
         "Textzeilen, Melodien oder Akkorde einer Song-Idee stehen wörtlich unter „Projekte & Ideen“.",
     ),
     Vorlage(
         "tagebuch", "Tagebuch",
         "Rückblick auf den Tag oder ein Erlebnis, Stimmung. Auch die Vorlage für die Tagesübersicht.",
         "## Was war\n## Gedanken und Gefühle\n## Was ich mir merken will\n"
-        "Erzählend, in ganzen Sätzen. Gefühle und Stimmung genau so stark wiedergeben, wie sie gesagt wurden.",
+        "Erzählend, in meinen eigenen Sätzen (Originalton). Gefühle und Stimmung genau so stark wiedergeben, wie sie "
+        "gesagt wurden, mit meinen Worten dafür.",
     ),
     Vorlage(
         "kundengespraech", "Kundengespräch / Gig-Anfrage",

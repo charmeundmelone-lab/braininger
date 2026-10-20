@@ -1,6 +1,7 @@
 package de.braininger.app.claude
 
 import android.content.Context
+import com.anthropic.models.messages.OutputConfig
 import de.braininger.app.Aufgabe
 import de.braininger.app.Einstellungen
 import org.json.JSONArray
@@ -104,6 +105,11 @@ object Auswertung {
             schema = v.schema,
             bilder = fotos.map { it.first },
             geschaetzt = 0.01 + abschnitte.sumOf { it.text.length } / 3.2 * 0.10 / 1e6,
+            // „high“ statt Standard „medium“: Haiku denkt dann gründlich nach und sortiert lange Aufnahmen sauber in die
+            // Lebensbereiche, statt der Reihenfolge des Erzählten zu folgen (Test 20.10.2026: 3 von 3 richtig, < 1 Cent
+            // für 18 min). Denken braucht bis ~11.000 Token, deshalb mehr Platz als die üblichen 16.000.
+            maxTokens = 32_000,
+            effort = OutputConfig.Effort.HIGH,
         )
         return Ergebnis(pruefen(antwort.daten, modus, v, offene), antwort.dollar)
     }

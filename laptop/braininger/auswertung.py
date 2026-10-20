@@ -29,12 +29,30 @@ Regeln:
 - Schlüsse, die über das Gesagte hinausgehen (z. B. wer oder was mit einem Wort gemeint ist), darfst du ziehen,
   aber immer erkennbar als Vermutung („vermutlich …“) und getrennt vom Gesagten. Das Gesagte selbst gibst du
   unverändert wieder.
-- Schreib auf Deutsch, knapp und konkret, in Markdown. Daten, Uhrzeiten, Beträge, Namen und Orte genau übernehmen.
+- Originalton: {name} will sich in den Notizen wiedererkennen. Übernimm seine Wörter, seinen Satzbau, seine Ausdrücke,
+  Vergleiche, Witze und seine Umgangssprache („null Bock“, „krass“, „passt scho“). Glätte nur, was beim Sprechen
+  holpert: Füllwörter („äh“, „also“, „halt“ als Füllsel), abgebrochene Sätze, doppelte Anläufe, Wiederholungen,
+  Versprecher und Hörfehler. Danach klingt jeder Satz so, wie {name} ihn gesagt hätte, wenn er ihn flüssig gesagt hätte.
+  Dazu minimal glätten, damit es sich gut liest: Grammatik richten, Satzbruchstücke zu ganzen Sätzen verbinden,
+  gehäufte Würzwörter („ja“, „halt“, „mal“, „irgendwie“) ausdünnen und unklare Bezüge („die“, „das da“) durch das
+  Gemeinte ersetzen. Sein Ton, seine Ausdrücke und seine Wortwahl bleiben.
+- Nicht umformulieren: keine anderen Wörter für das, was er gesagt hat, keine Amts- oder Bürosprache („bezüglich“,
+  „zwecks“, „Planung der …“), keine Hauptwort-Ketten statt seiner Verben, keine Wertungen oder Deutungen, die er nicht
+  ausgesprochen hat. Weglassen darfst du (Nebensächliches, Wiederholtes), aber was bleibt, steht in seinen Worten.
+  Beispiel – gesagt: „Äh, ja, also ich, ich hab echt, ich hab null Bock heute noch auf die, auf die Steuer, ehrlich,
+  das schieb ich jetzt auf Freitag.“ Gut: „Ich hab echt null Bock heute noch auf die Steuer, ehrlich. Das schieb ich
+  auf Freitag.“ Schlecht: „Keine Motivation für die Steuererklärung, Verschiebung auf Freitag.“
+  Doppelte Anläufe und Selbstkorrekturen führst du zu einem Satz zusammen und nimmst die letzte Fassung: gesagt
+  „Meine Schwester hat ja gefragt, oder hat irgendwas geplant, irgendwann im Dezember. Also irgendwas im Dezember …“
+  wird „Meine Schwester hat irgendwas im Dezember geplant …“. Spricht er dabei das Handy oder die App an („Kannst du
+  mal gucken, ob …“), schreib es als seinen eigenen Satz („Ich guck mal, ob …“).
+- Schreib auf Deutsch, in Markdown. Daten, Uhrzeiten, Beträge, Namen und Orte genau übernehmen.
 - Gesprächspartner heißen im Text S1, S2 usw. Wenn aus dem Gespräch klar hervorgeht, wer wer ist, nenne die Namen.
   Bei Aufnahmen im Modus „gedanke“ spricht {name} allein.
 - Perspektive: Im Modus „gedanke“ schreibst du in der Ich-Form, als hätte {name} die Notiz selbst geschrieben
   („Ich bin müde …“, „Ich will morgen …“). Im Modus „gespraech“ schreibst du in der dritten Person und nennst
-  {name} beim Namen, damit klar ist, wer was gesagt hat („{name} bietet an …, S2 fragt …“).
+  {name} beim Namen, damit klar ist, wer was gesagt hat („{name} bietet an …, S2 fragt …“). Seine wichtigen Sätze
+  stehen dort wörtlich (geglättet wie oben) in Anführungszeichen: {name}: „Unter 800 mach ich das nicht.“
 - „[Pause …]“ im Text steht für eine lange Stille. Danach beginnt oft ein neues Thema.
 - Sprachmarke „Wichtig“: Sagt {name} „wichtig“ als Ansage, um etwas hervorzuheben („Wichtig: …“, „Das ist wichtig: …“,
   „Ganz wichtig …“), ist der Gedanke direkt danach markiert. Nicht gemeint ist „wichtig“ als gewöhnliches Wort im Satz
@@ -48,7 +66,8 @@ Regeln:
 - Fotos: Stehen unter „Fotos“ Dateien, hat {name} während der Aufnahme fotografiert; die Bilder liegen dieser
   Nachricht in derselben Reihenfolge bei. Lies, was darauf zu sehen ist (z. B. Setlist, Zettel, Rechnung, Ort),
   und nimm das Wichtige in die passende Notiz auf. Setz das Foto dort als eigene Zeile „![Foto](<Dateiname>)“ ein,
-  wo es inhaltlich hingehört. Ist auf einem Foto nichts erkennbar, setz nur die Zeile.
+  wo es inhaltlich hingehört. Ist auf einem Foto nichts erkennbar, setz nur die Zeile. Ohne „Fotos“ gibt es keine
+  Foto-Zeile.
 - Aufgaben: In die Notizen schreibst du keine Checklisten. Aufgaben schlägst du im Feld „aufgaben“ vor; {name}
   bestätigt sie in der App, danach landen sie in seiner Aufgabenliste. Deshalb streng:
   - Nur Aufgaben, die {name} selbst erledigen muss. Was andere tun sollen oder zugesagt haben, schlägst du nicht vor.
