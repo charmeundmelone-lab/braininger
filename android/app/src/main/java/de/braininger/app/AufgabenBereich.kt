@@ -104,9 +104,10 @@ fun AufgabenSeite() {
             Spacer(Modifier.height(16.dp))
         }
 
+        val erledigt = remember(stand) { AufgabenSpeicher.erledigtHeute(context) }
         for (korb in listOf(Koerbe.HEUTE, Koerbe.WOCHE, Koerbe.IRGENDWANN)) {
             val liste = offene.filter { it.korbJetzt() == korb }
-            KorbAbschnitt(korb, liste) { bearbeiten = it }
+            KorbAbschnitt(korb, liste, if (korb == Koerbe.HEUTE) erledigt else emptyList()) { bearbeiten = it }
         }
         if (offene.isEmpty()) Text("Keine offenen Aufgaben.", color = Grau, fontSize = 14.sp)
         Spacer(Modifier.height(24.dp))
@@ -117,18 +118,20 @@ fun AufgabenSeite() {
 }
 
 @Composable
-private fun KorbAbschnitt(korb: String, liste: List<Aufgabe>, oeffnen: (Aufgabe) -> Unit) {
+private fun KorbAbschnitt(korb: String, liste: List<Aufgabe>, erledigt: List<Aufgabe>, oeffnen: (Aufgabe) -> Unit) {
     val context = LocalContext.current
     var alle by remember { mutableStateOf(false) }
     Text(Koerbe.name(korb).uppercase() + if (liste.isNotEmpty()) "  ${liste.size}" else "",
          fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Grau)
     Spacer(Modifier.height(4.dp))
-    if (liste.isEmpty()) {
+    if (liste.isEmpty() && erledigt.isEmpty()) {
         Text("–", color = Linie, fontSize = 14.sp, modifier = Modifier.padding(bottom = 12.dp))
         return
     }
     val sichtbar = if (alle) liste else liste.take(SICHTBAR)
     sichtbar.forEach { a -> AufgabeZeile(a, { AufgabenSpeicher.abhaken(context, a.id) }) { oeffnen(a) } }
+    // heute Abgehaktes bleibt durchgestrichen stehen; Tipp auf den Kreis macht es wieder offen
+    erledigt.forEach { a -> AufgabeZeile(a, { AufgabenSpeicher.wiederOeffnen(context, a.id) }) { } }
     if (liste.size > SICHTBAR) {
         Text(if (alle) "WENIGER" else "ALLE ${liste.size} ZEIGEN", color = Weiss, fontSize = 13.sp, fontWeight = FontWeight.Bold,
              modifier = Modifier.clickable { alle = !alle }.padding(vertical = 6.dp))
@@ -210,16 +213,23 @@ private fun VorschlagKarte(v: Vorschlag, bezugText: String?) {
 @Composable
 internal fun AufgabeZeile(a: Aufgabe, abhaken: () -> Unit, oeffnen: () -> Unit) {
     val context = LocalContext.current
+    val fertig = a.erledigt != null
     Column(
         Modifier.fillMaxWidth().padding(vertical = 3.dp)
-            .background(Bereiche.flaeche(a.bereich), RoundedCornerShape(14.dp))
+            .background(if (fertig) Schwarz else Bereiche.flaeche(a.bereich), RoundedCornerShape(14.dp))
+            .border(1.dp, if (fertig) Linie else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(14.dp))
             .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(26.dp).border(1.5.dp, Weiss, CircleShape).clickable(onClick = abhaken))
+            Kreis(fertig, 26, abhaken)
             Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f).clickable(onClick = oeffnen)) {
-                Text(a.text, color = Weiss, fontSize = 15.sp)
+            Column(Modifier.weight(1f).clickable(enabled = !fertig, onClick = oeffnen)) {
+                Text(a.text, color = if (fertig) Grau else Weiss, fontSize = 15.sp,
+                     textDecoration = if (fertig) TextDecoration.LineThrough else null)
+                if (fertig) {
+                    Text("erledigt · zum Rückgängigmachen auf den Kreis tippen", color = Grau, fontSize = 12.sp)
+                    return@Column
+                }
                 val zusatz = listOfNotNull(
                     a.heuteSeitFrueher()?.let { Koerbe.seitText(it) },
                     a.frist?.let { Koerbe.fristText(it) },
@@ -241,6 +251,19 @@ internal fun AufgabeZeile(a: Aufgabe, abhaken: () -> Unit, oeffnen: () -> Unit) 
                      textDecoration = if (s.erledigt) TextDecoration.LineThrough else null)
             }
         }
+    }
+}
+
+/** Abhak-Kreis: leer = offen, gefüllt mit Häkchen = erledigt. */
+@Composable
+internal fun Kreis(fertig: Boolean, groesse: Int, onClick: () -> Unit) {
+    Box(
+        Modifier.size(groesse.dp).border(1.5.dp, if (fertig) Grau else Weiss, CircleShape)
+            .background(if (fertig) Grau else androidx.compose.ui.graphics.Color.Transparent, CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (fertig) Text("✓", color = Schwarz, fontSize = (groesse * 0.55).sp, fontWeight = FontWeight.Bold)
     }
 }
 
@@ -296,7 +319,7 @@ private fun NeueAufgabeDialog(schliessen: () -> Unit) {
 }
 
 @Composable
-private fun AufgabeDialog(a: Aufgabe, schliessen: () -> Unit) {
+internal fun AufgabeDialog(a: Aufgabe, schliessen: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var meldung by remember { mutableStateOf<String?>(null) }

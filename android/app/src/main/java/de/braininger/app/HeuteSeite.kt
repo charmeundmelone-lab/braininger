@@ -55,8 +55,10 @@ fun HeuteBereich(aktualisierung: Int, zuAufgaben: () -> Unit) {
     var kalenderStand by remember { mutableLongStateOf(0L) }
     var alle by remember { mutableStateOf(false) }
     var terminWahl by remember { mutableStateOf<Termin?>(null) }
+    var aufgabeWahl by remember { mutableStateOf<Aufgabe?>(null) }
     val punkte = remember(aktualisierung, aufgabenStand, kalenderStand) { Tagesrhythmus.heute(context) }
     val vorschlaege = remember(aufgabenStand) { AufgabenSpeicher.vorschlaege(context).size }
+    val erledigt = remember(aufgabenStand) { AufgabenSpeicher.erledigtHeute(context) }
     val kalenderAnfrage = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         kalenderStand++
         if (it) Tagesrhythmus.planen(context)
@@ -74,10 +76,23 @@ fun HeuteBereich(aktualisierung: Int, zuAufgaben: () -> Unit) {
         Text("Heute steht nichts Festes an.", color = Grau, fontSize = 14.sp, modifier = Modifier.padding(vertical = 6.dp))
     }
     val sichtbar = if (alle) punkte else punkte.take(MAX_PUNKTE)
-    sichtbar.forEach { p -> HeutePunkt(p) { p.termin?.let { terminWahl = it } } }
+    sichtbar.forEach { p -> HeutePunkt(p) { p.termin?.let { terminWahl = it }; p.aufgabe?.let { aufgabeWahl = it } } }
     if (punkte.size > MAX_PUNKTE) {
         Text(if (alle) "WENIGER" else "+ ${punkte.size - MAX_PUNKTE} WEITERE", color = Weiss, fontSize = 13.sp,
              fontWeight = FontWeight.Bold, modifier = Modifier.clickable { alle = !alle }.padding(vertical = 8.dp))
+    }
+    // heute Erledigtes bleibt durchgestrichen sichtbar (zählt nicht zu den 5 Punkten), Tipp auf den Kreis = rückgängig
+    erledigt.forEach { a ->
+        Row(
+            Modifier.fillMaxWidth().padding(vertical = 3.dp).border(1.dp, Linie, RoundedCornerShape(14.dp))
+                .padding(horizontal = 12.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Kreis(true, 22) { AufgabenSpeicher.wiederOeffnen(context, a.id) }
+            Spacer(Modifier.width(12.dp))
+            Text(a.text, color = Grau, fontSize = 14.sp, textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough,
+                 modifier = Modifier.weight(1f), maxLines = 2)
+        }
     }
     if (!Kalender.erlaubt(context)) {
         Text("Termine aus deinem Kalender anzeigen", color = Weiss, fontSize = 13.sp,
@@ -94,6 +109,8 @@ fun HeuteBereich(aktualisierung: Int, zuAufgaben: () -> Unit) {
     }
     FokusKarte()
     Spacer(Modifier.height(20.dp))
+
+    aufgabeWahl?.let { a -> AufgabeDialog(a) { aufgabeWahl = null } }
 
     terminWahl?.let { t ->
         AlertDialog(
@@ -119,18 +136,18 @@ fun HeuteBereich(aktualisierung: Int, zuAufgaben: () -> Unit) {
 }
 
 @Composable
-private fun HeutePunkt(p: Tagesrhythmus.Punkt, terminTippen: () -> Unit) {
+private fun HeutePunkt(p: Tagesrhythmus.Punkt, tippen: () -> Unit) {
     val context = LocalContext.current
     Row(
         Modifier.fillMaxWidth().padding(vertical = 3.dp)
             .background(Bereiche.flaeche(p.bereich), RoundedCornerShape(14.dp))
-            .clickable(enabled = p.termin != null, onClick = terminTippen)
+            .clickable(onClick = tippen)
             .padding(horizontal = 12.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val a = p.aufgabe
         if (a != null) {
-            Box(Modifier.size(22.dp).border(1.5.dp, Weiss, CircleShape).clickable { AufgabenSpeicher.abhaken(context, a.id) })
+            Kreis(false, 22) { AufgabenSpeicher.abhaken(context, a.id) }
             Spacer(Modifier.width(12.dp))
         } else {
             Text(p.zeit?.let { Tagesrhythmus.uhrzeit(it) } ?: "ganzt.", color = Weiss, fontSize = 14.sp,

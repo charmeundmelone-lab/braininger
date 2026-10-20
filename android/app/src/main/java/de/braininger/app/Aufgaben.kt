@@ -255,6 +255,20 @@ object AufgabenSpeicher {
         l.replaceAll { if (it.id == id) it.copy(erstellt = System.currentTimeMillis()) else it }
     }
 
+    /** Abgehakt, aber doch nicht fertig: wieder offen (Tipp auf den gefüllten Kreis). */
+    fun wiederOeffnen(context: Context, id: String) = aendern(context) { l ->
+        l.replaceAll { if (it.id == id) it.copy(erledigt = null) else it }
+    }
+
+    /**
+     * Heute Abgehaktes. Es bleibt bis Mitternacht durchgestrichen sichtbar (zum Freuen und Rückgängigmachen),
+     * zählt aber nirgends mehr mit.
+     */
+    fun erledigtHeute(context: Context): List<Aufgabe> {
+        val beginn = Koerbe.tagBeginn(System.currentTimeMillis())
+        return alle(context).filter { (it.erledigt ?: 0L) >= beginn }.sortedBy { it.erledigt }
+    }
+
     /** Offene Aufgaben in einem Korb (nach [Aufgabe.korbJetzt]). */
     fun imKorb(context: Context, korb: String): List<Aufgabe> = offene(context).filter { it.korbJetzt() == korb }
 
