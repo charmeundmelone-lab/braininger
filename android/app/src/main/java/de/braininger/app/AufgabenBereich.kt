@@ -1,10 +1,10 @@
 package de.braininger.app
 
 import android.app.DatePickerDialog
-import android.app.TimePickerDialog
 import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -32,26 +32,35 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import de.braininger.app.claude.Schluessel
+import de.braininger.app.claude.Zerlegen
+import de.braininger.app.ui.Bereiche
 import de.braininger.app.ui.Grau
 import de.braininger.app.ui.Linie
 import de.braininger.app.ui.Punktschrift
 import de.braininger.app.ui.Rot
 import de.braininger.app.ui.Schwarz
 import de.braininger.app.ui.Weiss
+import kotlinx.coroutines.launch
 import java.util.Calendar
 
-private const val SICHTBAR = 4
+private const val SICHTBAR = 5
 
-/** Vorschläge aus den Aufnahmen und die offenen Aufgaben, direkt unter den Aufnahme-Knöpfen. */
+/**
+ * Aufgaben-Reiter (Grill 20.10.2026): drei Körbe statt Uhrzeiten, kein Rot, kein Zähler „überfällig“.
+ * Oben der Wochenblick (sonntags) und die Vorschläge aus den Aufnahmen.
+ */
 @Composable
-fun AufgabenBereich() {
+fun AufgabenSeite() {
     val context = LocalContext.current
     val stand by AufgabenSpeicher.stand.collectAsState()
     val ordnungStand by Ordnung.stand.collectAsState()
@@ -61,9 +70,9 @@ fun AufgabenBereich() {
     }
     val offene = remember(stand) { AufgabenSpeicher.offene(context) }
     val texte = remember(stand) { AufgabenSpeicher.alle(context).associate { it.id to it.text } }
-    var alleZeigen by remember { mutableStateOf(false) }
     var bearbeiten by remember { mutableStateOf<Aufgabe?>(null) }
     var neuDialog by remember { mutableStateOf(false) }
+    var vorschlaegeOffen by remember { mutableStateOf(true) }
 
     LaunchedEffect(Unit) {
         try {
@@ -72,33 +81,94 @@ fun AufgabenBereich() {
         }
     }
 
-    if (vorschlaege.isNotEmpty()) {
-        Text("VORSCHLÄGE", fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Grau)
-        Spacer(Modifier.height(4.dp))
-        vorschlaege.forEach { v -> VorschlagKarte(v, v.bezug?.let { texte[it] }) }
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("AUFGABEN", fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 24.sp, color = Weiss,
+                 modifier = Modifier.weight(1f))
+            Text("+", color = Weiss, fontSize = 30.sp, modifier = Modifier.clickable { neuDialog = true }.padding(horizontal = 12.dp))
+        }
         Spacer(Modifier.height(12.dp))
-    }
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("AUFGABEN", fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Grau,
-             modifier = Modifier.weight(1f))
-        Text("+", color = Weiss, fontSize = 26.sp, modifier = Modifier.clickable { neuDialog = true }.padding(horizontal = 12.dp))
+        if (Tagesrhythmus.wochenblickOffen(context)) {
+            val alte = remember(stand) { Tagesrhythmus.wochenblickAufgaben(context) }
+            if (alte.isNotEmpty()) Wochenblick(alte) else Tagesrhythmus.wochenblickFertig(context)
+        }
+
+        if (vorschlaege.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth().clickable { vorschlaegeOffen = !vorschlaegeOffen }.padding(vertical = 4.dp)) {
+                Text("${vorschlaege.size} VORSCHLÄGE AUS AUFNAHMEN", fontFamily = Punktschrift, fontWeight = FontWeight.Bold,
+                     fontSize = 14.sp, color = Grau, modifier = Modifier.weight(1f))
+                Text(if (vorschlaegeOffen) "▾" else "▸", color = Grau, fontSize = 14.sp)
+            }
+            if (vorschlaegeOffen) vorschlaege.forEach { v -> VorschlagKarte(v, v.bezug?.let { texte[it] }) }
+            Spacer(Modifier.height(16.dp))
+        }
+
+        for (korb in listOf(Koerbe.HEUTE, Koerbe.WOCHE, Koerbe.IRGENDWANN)) {
+            val liste = offene.filter { it.korbJetzt() == korb }
+            KorbAbschnitt(korb, liste) { bearbeiten = it }
+        }
+        if (offene.isEmpty()) Text("Keine offenen Aufgaben.", color = Grau, fontSize = 14.sp)
+        Spacer(Modifier.height(24.dp))
     }
-    if (offene.isEmpty()) {
-        Text("Keine offenen Aufgaben.", color = Grau, fontSize = 14.sp, modifier = Modifier.padding(vertical = 4.dp))
-    }
-    val sichtbar = if (alleZeigen) offene else offene.take(SICHTBAR)
-    sichtbar.forEach { a -> AufgabeZeile(a, { AufgabenSpeicher.abhaken(context, a.id) }) { bearbeiten = a } }
-    if (offene.size > SICHTBAR) {
-        Text(
-            if (alleZeigen) "WENIGER" else "ALLE ${offene.size} ZEIGEN", color = Weiss, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-            modifier = Modifier.clickable { alleZeigen = !alleZeigen }.padding(vertical = 6.dp),
-        )
-    }
-    Spacer(Modifier.height(16.dp))
 
     if (neuDialog) NeueAufgabeDialog { neuDialog = false }
     bearbeiten?.let { a -> AufgabeDialog(a) { bearbeiten = null } }
+}
+
+@Composable
+private fun KorbAbschnitt(korb: String, liste: List<Aufgabe>, oeffnen: (Aufgabe) -> Unit) {
+    val context = LocalContext.current
+    var alle by remember { mutableStateOf(false) }
+    Text(Koerbe.name(korb).uppercase() + if (liste.isNotEmpty()) "  ${liste.size}" else "",
+         fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Grau)
+    Spacer(Modifier.height(4.dp))
+    if (liste.isEmpty()) {
+        Text("–", color = Linie, fontSize = 14.sp, modifier = Modifier.padding(bottom = 12.dp))
+        return
+    }
+    val sichtbar = if (alle) liste else liste.take(SICHTBAR)
+    sichtbar.forEach { a -> AufgabeZeile(a, { AufgabenSpeicher.abhaken(context, a.id) }) { oeffnen(a) } }
+    if (liste.size > SICHTBAR) {
+        Text(if (alle) "WENIGER" else "ALLE ${liste.size} ZEIGEN", color = Weiss, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+             modifier = Modifier.clickable { alle = !alle }.padding(vertical = 6.dp))
+    }
+    Spacer(Modifier.height(16.dp))
+}
+
+/** Sonntags: drei alte Aufgaben aus „Irgendwann“ – holen, behalten oder weg (Frage 59). */
+@Composable
+private fun Wochenblick(alte: List<Aufgabe>) {
+    val context = LocalContext.current
+    Column(
+        Modifier.fillMaxWidth().padding(bottom = 16.dp)
+            .border(1.dp, Weiss, RoundedCornerShape(16.dp)).padding(14.dp)
+    ) {
+        Text("WOCHENBLICK", fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Weiss)
+        Text("Drei alte Aufgaben. Was soll mit ihnen passieren?", color = Grau, fontSize = 13.sp)
+        alte.forEach { a ->
+            Spacer(Modifier.height(10.dp))
+            Text(a.text, color = Weiss, fontSize = 15.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
+                KleinerKnopf("HOLEN") { AufgabenSpeicher.korbSetzen(context, a.id, Koerbe.HEUTE) }
+                KleinerKnopf("BEHALTEN") {
+                    // bleibt in „irgendwann“, kommt aber erst in einer Woche wieder in den Wochenblick
+                    AufgabenSpeicher.korbSetzen(context, a.id, Koerbe.IRGENDWANN)
+                    AufgabenSpeicher.behalten(context, a.id)
+                }
+                KleinerKnopf("WEG") { AufgabenSpeicher.loeschen(context, a.id) }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun KleinerKnopf(text: String, hell: Boolean = true, onClick: () -> Unit) {
+    OutlinedButton(
+        onClick = onClick, modifier = Modifier.height(36.dp), shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, if (hell) Weiss else Linie),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = if (hell) Weiss else Grau),
+    ) { Text(text, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
 }
 
 @Composable
@@ -106,7 +176,8 @@ private fun VorschlagKarte(v: Vorschlag, bezugText: String?) {
     val context = LocalContext.current
     Column(
         Modifier.fillMaxWidth().padding(vertical = 4.dp)
-            .border(1.dp, Weiss, RoundedCornerShape(16.dp)).padding(horizontal = 14.dp, vertical = 10.dp)
+            .background(Bereiche.flaeche(v.bereich), RoundedCornerShape(16.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
         val vorsatz = when (v.art) {
             "erledigt" -> "Erledigt? "
@@ -115,7 +186,7 @@ private fun VorschlagKarte(v: Vorschlag, bezugText: String?) {
         }
         Text(vorsatz + (if (v.art == "erledigt") bezugText ?: v.text else v.text), color = Weiss, fontSize = 15.sp)
         val zusatz = listOfNotNull(
-            v.frist?.let { "bis " + AufgabenSpeicher.fristText(it) },
+            v.frist?.let { Koerbe.fristText(it) },
             "unklar, wer".takeIf { v.unklarWer },
             bezugText?.takeIf { v.art == "ergaenzen" }?.let { "bisher: $it" },
         )
@@ -135,28 +206,50 @@ private fun VorschlagKarte(v: Vorschlag, bezugText: String?) {
     }
 }
 
+/** Eine Aufgabe als gefärbte Fläche (Lebensbereich), darunter ihre Schritte als Häkchen. */
 @Composable
-private fun AufgabeZeile(a: Aufgabe, abhaken: () -> Unit, oeffnen: () -> Unit) {
-    val ueberfaellig = (a.frist ?: Long.MAX_VALUE) < System.currentTimeMillis()
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(26.dp).border(1.5.dp, Weiss, CircleShape).clickable(onClick = abhaken))
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f).clickable(onClick = oeffnen)) {
-            Text(a.text, color = Weiss, fontSize = 15.sp)
-            val zusatz = listOfNotNull(a.frist?.let { AufgabenSpeicher.fristText(it) }, "unklar, wer".takeIf { a.unklarWer })
-            if (zusatz.isNotEmpty()) Text(zusatz.joinToString(" · "), color = if (ueberfaellig) Rot else Grau, fontSize = 12.sp)
+internal fun AufgabeZeile(a: Aufgabe, abhaken: () -> Unit, oeffnen: () -> Unit) {
+    val context = LocalContext.current
+    Column(
+        Modifier.fillMaxWidth().padding(vertical = 3.dp)
+            .background(Bereiche.flaeche(a.bereich), RoundedCornerShape(14.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(26.dp).border(1.5.dp, Weiss, CircleShape).clickable(onClick = abhaken))
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f).clickable(onClick = oeffnen)) {
+                Text(a.text, color = Weiss, fontSize = 15.sp)
+                val zusatz = listOfNotNull(
+                    a.heuteSeitFrueher()?.let { Koerbe.seitText(it) },
+                    a.frist?.let { Koerbe.fristText(it) },
+                    a.schritte.takeIf { it.isNotEmpty() }?.let { s -> "${s.count { it.erledigt }}/${s.size} Schritte" },
+                    "unklar, wer".takeIf { a.unklarWer },
+                )
+                if (zusatz.isNotEmpty()) Text(zusatz.joinToString(" · "), color = Grau, fontSize = 12.sp)
+            }
+        }
+        a.schritte.forEachIndexed { i, s ->
+            Row(Modifier.padding(start = 38.dp, top = 6.dp).clickable { AufgabenSpeicher.schrittAbhaken(context, a.id, i) },
+                verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.size(18.dp).border(1.dp, Weiss, CircleShape)
+                        .background(if (s.erledigt) Weiss else androidx.compose.ui.graphics.Color.Transparent, CircleShape)
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(s.text, color = if (s.erledigt) Grau else Weiss, fontSize = 14.sp,
+                     textDecoration = if (s.erledigt) TextDecoration.LineThrough else null)
+            }
         }
     }
 }
 
-/** Datum und dann Uhrzeit wählen (Android-Standarddialoge). */
-private fun zeitWaehlen(context: Context, start: Long?, fertig: (Long) -> Unit) {
-    val c = Calendar.getInstance().apply { timeInMillis = start ?: AufgabenSpeicher.morgenAcht() }
+/** Nur ein Tag, keine Uhrzeit (Grill 20.10.2026: Uhrzeiten machen Schuldgefühle). Gespeichert wird 12 Uhr. */
+private fun tagWaehlen(context: Context, start: Long?, fertig: (Long) -> Unit) {
+    val c = Calendar.getInstance().apply { timeInMillis = start ?: (System.currentTimeMillis() + 86_400_000L) }
     DatePickerDialog(context, { _, j, m, t ->
-        TimePickerDialog(context, { _, h, min ->
-            c.set(j, m, t, h, min, 0); c.set(Calendar.MILLISECOND, 0)
-            fertig(c.timeInMillis)
-        }, c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE), true).show()
+        c.set(j, m, t, 12, 0, 0); c.set(Calendar.MILLISECOND, 0)
+        fertig(c.timeInMillis)
     }, c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH)).show()
 }
 
@@ -169,6 +262,7 @@ private fun NeueAufgabeDialog(schliessen: () -> Unit) {
     val context = LocalContext.current
     var text by remember { mutableStateOf("") }
     var frist by remember { mutableStateOf<Long?>(null) }
+    var korb by remember { mutableStateOf(Koerbe.IRGENDWANN) }
     AlertDialog(
         onDismissRequest = schliessen,
         containerColor = Schwarz,
@@ -181,14 +275,20 @@ private fun NeueAufgabeDialog(schliessen: () -> Unit) {
                     colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Weiss, unfocusedTextColor = Weiss,
                         focusedBorderColor = Weiss, unfocusedBorderColor = Linie, cursorColor = Weiss),
                 )
-                TextButton(onClick = { zeitWaehlen(context, frist) { frist = it } }) {
-                    Text(frist?.let { "Frist: " + AufgabenSpeicher.fristText(it) } ?: "+ FRIST (optional)", color = Weiss)
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for (k in listOf(Koerbe.HEUTE, Koerbe.WOCHE, Koerbe.IRGENDWANN)) {
+                        KleinerKnopf(Koerbe.name(k).uppercase(), hell = korb == k) { korb = k }
+                    }
+                }
+                TextButton(onClick = { tagWaehlen(context, frist) { frist = it } }) {
+                    Text(frist?.let { "Frist: " + Koerbe.fristText(it) } ?: "+ FRIST (optional)", color = Weiss)
                 }
             }
         },
         confirmButton = {
             TextButton(enabled = text.isNotBlank(), onClick = {
-                AufgabenSpeicher.neu(context, text, frist); schliessen()
+                AufgabenSpeicher.neu(context, text, frist, korb = korb); schliessen()
             }) { Text("HINZUFÜGEN", color = if (text.isNotBlank()) Weiss else Grau, fontWeight = FontWeight.Bold) }
         },
         dismissButton = { TextButton(onClick = schliessen) { Text("ABBRECHEN", color = Grau) } },
@@ -198,16 +298,58 @@ private fun NeueAufgabeDialog(schliessen: () -> Unit) {
 @Composable
 private fun AufgabeDialog(a: Aufgabe, schliessen: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var meldung by remember { mutableStateOf<String?>(null) }
+    var zerlegt by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = schliessen,
         containerColor = Schwarz,
         title = { Text(a.text, color = Weiss, fontSize = 17.sp) },
         text = {
             Column {
-                Text(a.frist?.let { "Frist: " + AufgabenSpeicher.fristText(it) } ?: "Keine Frist", color = Grau, fontSize = 13.sp)
-                Spacer(Modifier.height(8.dp))
-                TextButton(onClick = { zeitWaehlen(context, a.frist) { AufgabenSpeicher.fristSetzen(context, a.id, it); schliessen() } }) {
-                    Text("FRIST ÄNDERN", color = Weiss)
+                Text(listOfNotNull(Koerbe.name(a.korbJetzt()), a.frist?.let { Koerbe.fristText(it) }).joinToString(" · "),
+                     color = Grau, fontSize = 13.sp)
+                Spacer(Modifier.height(10.dp))
+                // heute / morgen / später (Frage 14)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    KleinerKnopf("HEUTE") { AufgabenSpeicher.korbSetzen(context, a.id, Koerbe.HEUTE); schliessen() }
+                    KleinerKnopf("MORGEN") { AufgabenSpeicher.morgenWieder(context, a.id); schliessen() }
+                    KleinerKnopf("SPÄTER") { AufgabenSpeicher.korbSetzen(context, a.id, Koerbe.IRGENDWANN); schliessen() }
+                }
+                Spacer(Modifier.height(12.dp))
+                Text("FOKUS", fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Grau)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
+                    for (m in listOf(10, 25, 45)) KleinerKnopf("$m MIN") { FokusDienst.starten(context, a.text, m); schliessen() }
+                }
+                Spacer(Modifier.height(6.dp))
+                if (a.schritte.isEmpty()) {
+                    TextButton(enabled = !zerlegt, onClick = {
+                        if (!Schluessel.vorhanden(context)) {
+                            meldung = "Dafür braucht Braininger einen Claude-Schlüssel (Einstellungen)."
+                            return@TextButton
+                        }
+                        zerlegt = true
+                        meldung = "Claude zerlegt die Aufgabe …"
+                        scope.launch {
+                            meldung = try {
+                                val s = Zerlegen.schritte(context, a)
+                                if (s.isEmpty()) "Claude hat keine Schritte gefunden." else {
+                                    AufgabenSpeicher.schritteSetzen(context, a.id, s); schliessen(); null
+                                }
+                            } catch (e: Exception) {
+                                zerlegt = false
+                                "Ging gerade nicht: ${e.message}"
+                            }
+                        }
+                    }) { Text("KLEINER MACHEN", color = Weiss) }
+                } else {
+                    TextButton(onClick = { AufgabenSpeicher.schritteSetzen(context, a.id, emptyList()); schliessen() }) {
+                        Text("SCHRITTE ENTFERNEN", color = Weiss)
+                    }
+                }
+                meldung?.let { Text(it, color = Grau, fontSize = 12.sp) }
+                TextButton(onClick = { tagWaehlen(context, a.frist) { AufgabenSpeicher.fristSetzen(context, a.id, it); schliessen() } }) {
+                    Text(if (a.frist == null) "FRIST SETZEN" else "FRIST ÄNDERN", color = Weiss)
                 }
                 if (a.frist != null) TextButton(onClick = { AufgabenSpeicher.fristSetzen(context, a.id, null); schliessen() }) {
                     Text("FRIST ENTFERNEN", color = Weiss)

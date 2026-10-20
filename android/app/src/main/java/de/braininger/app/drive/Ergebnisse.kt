@@ -57,6 +57,8 @@ data class Ergebnis(
     val vorlageHinweis: Pair<String, String>? = null,
     /** handy = am Handy ausgewertet (Whisper + Claude-API), sonst Laptop. */
     val quelle: String? = null,
+    /** Lebensbereich der Aufnahme (familie, musik, ich, projekte, finanzen) für die Farbe, sonst leer. */
+    val bereich: String = "",
 ) {
     val endgueltig get() = status == "fertig" || status == "fehler"
 
@@ -125,11 +127,12 @@ data class Ergebnis(
                     val v = aufgaben!!.optJSONObject(it) ?: return@mapNotNull null
                     Vorschlag("$it", "", v.optString("art", "neu"), v.optString("text"),
                         AufgabenSpeicher.zeitLesen(v.optString("frist")), v.optBoolean("unklar_wer"),
-                        v.optString("bezug").ifBlank { null })
+                        v.optString("bezug").ifBlank { null }, v.optString("bereich"))
                 }.filter { it.text.isNotBlank() },
                 vorlageHinweis = hinweis?.optString("vorlage")?.takeIf { it.isNotBlank() }
                     ?.let { it to hinweis.optString("grund") },
                 quelle = j.optString("quelle").takeUnless { j.isNull("quelle") || it.isBlank() },
+                bereich = j.optString("bereich").takeUnless { j.isNull("bereich") } ?: "",
             )
         } catch (_: Exception) {
             null
@@ -377,6 +380,9 @@ class ErgebnisAuftrag(context: Context, params: WorkerParameters) : CoroutineWor
         nebenbei { if (Fragen.abrufen(applicationContext)) Fragen.benachrichtigen(applicationContext) }
         nebenbei { GoogleDocs.aktualisieren(applicationContext) }
         nebenbei { EndgueltigLoeschen.aufraeumen(applicationContext) }
+        // Termine: neu Eingetragenes einschätzen lassen und die Erinnerungen der nächsten 48 Stunden planen
+        nebenbei { de.braininger.app.Kalender.einschaetzen(applicationContext) }
+        nebenbei { de.braininger.app.TerminErinnerung.planen(applicationContext) }
         Result.success()
     } catch (_: AnmeldungNoetig) {
         Result.success() // Anmeldung meldet schon der Upload

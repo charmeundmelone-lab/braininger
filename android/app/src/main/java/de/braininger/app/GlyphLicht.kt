@@ -58,6 +58,20 @@ object GlyphLicht {
         haupt.postDelayed({ sicher { it.turnOff() } }, 600)
     }
 
+    /** Fokus-Timer: Streifen C zeigt die Restzeit in Prozent und bleibt an. */
+    fun restzeit(prozent: Int) = sicher { m ->
+        m.displayProgress(m.glyphFrameBuilder.buildChannelC().build(), prozent.coerceIn(0, 100))
+    }
+
+    /** Fokus-Timer zu Ende: Streifen C blinkt dreimal ruhig. */
+    fun fokusEnde() = sicher { m ->
+        val blinken = m.glyphFrameBuilder.buildChannelC().buildPeriod(400).buildCycles(3).buildInterval(300).build()
+        m.animate(blinken)
+        haupt.postDelayed({ sicher { it.turnOff() } }, 2_600)
+    }
+
+    fun aus() = sicher { it.turnOff() }
+
     private fun lauf(hoch: Boolean) = sicher { m ->
         val streifen = m.glyphFrameBuilder.buildChannelC().build()
         val schritte = (0..10).map { it * 10 }.let { if (hoch) it else it.reversed() }

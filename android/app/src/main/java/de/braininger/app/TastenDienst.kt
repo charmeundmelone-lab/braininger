@@ -65,6 +65,30 @@ class TastenDienst : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
     override fun onInterrupt() {}
 
+    // Morgen-Nachricht beim ersten Entsperren ab 5 Uhr (Grill 20.10.2026). ACTION_USER_PRESENT lässt sich nur zur
+    // Laufzeit empfangen (nicht im Manifest); dieser Dienst läuft ständig und wird von der TastenWache geschützt.
+    private val entsperrt = object : android.content.BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) {
+            if (i.action == Intent.ACTION_USER_PRESENT) Tagesrhythmus.entsperrt(c)
+        }
+    }
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        try {
+            registerReceiver(entsperrt, android.content.IntentFilter(Intent.ACTION_USER_PRESENT), Context.RECEIVER_NOT_EXPORTED)
+        } catch (_: Exception) {
+        }
+    }
+
+    override fun onDestroy() {
+        try {
+            unregisterReceiver(entsperrt)
+        } catch (_: Exception) {
+        }
+        super.onDestroy()
+    }
+
     override fun onKeyEvent(event: KeyEvent): Boolean {
         if (event.scanCode != ESSENTIAL_SCAN) return false
         val jetzt = SystemClock.uptimeMillis()

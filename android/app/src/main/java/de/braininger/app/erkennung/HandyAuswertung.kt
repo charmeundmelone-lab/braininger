@@ -284,6 +284,7 @@ object HandyAuswertung {
             val j = basis(a, text)
                 .put("status", "fertig").put("fortschritt", 1.0)
                 .put("kurz", d.optString("kurz"))
+                .put("bereich", d.optString("bereich"))
                 .put("notizen", d.getJSONArray("notizen"))
                 .put("wichtig", d.getJSONArray("wichtig"))
                 .put("aufgaben", d.getJSONArray("aufgaben"))

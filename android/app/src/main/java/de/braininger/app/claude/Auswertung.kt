@@ -15,6 +15,9 @@ import java.util.Locale
  * laptop/werkzeuge/auswertung_exportieren.py. Das Wörterbuch und die Stimmerkennung gibt es nur am Laptop.
  */
 object Auswertung {
+    /** Lebensbereiche wie in auswertung.py (BEREICHE), für die Farben. */
+    val BEREICHE = setOf("familie", "musik", "ich", "projekte", "finanzen")
+
     private class Vorgaben(
         val systemPrompt: String,
         val vorlagenText: String,
@@ -131,7 +134,8 @@ object Auswertung {
                 try { iso.format(iso.parse(f.take(16))!!) } catch (_: Exception) { "" }
             } ?: ""
             aufgaben.put(JSONObject().put("art", art).put("text", text).put("frist", frist)
-                .put("unklar_wer", a.optBoolean("unklar_wer")).put("bezug", if (art != "neu") bezug else ""))
+                .put("unklar_wer", a.optBoolean("unklar_wer")).put("bezug", if (art != "neu") bezug else "")
+                .put("bereich", a.optString("bereich").takeIf { it in BEREICHE } ?: ""))
         }
 
         val hinweis = d.optJSONObject("vorlage_hinweis")
@@ -139,6 +143,7 @@ object Auswertung {
             hinweis.optString("vorlage") != notizen[0].optString("vorlage")
 
         return JSONObject()
+            .put("bereich", d.optString("bereich").takeIf { it in BEREICHE } ?: "")
             .put("kurz", d.optString("kurz"))
             .put("notizen", JSONArray(notizen))
             .put("aufgaben", aufgaben)

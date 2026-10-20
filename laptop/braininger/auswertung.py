@@ -50,7 +50,7 @@ Regeln:
   und nimm das Wichtige in die passende Notiz auf. Setz das Foto dort als eigene Zeile „![Foto](<Dateiname>)“ ein,
   wo es inhaltlich hingehört. Ist auf einem Foto nichts erkennbar, setz nur die Zeile.
 - Aufgaben: In die Notizen schreibst du keine Checklisten. Aufgaben schlägst du im Feld „aufgaben“ vor; {name}
-  bestätigt sie in der App, danach landen sie in seiner Aufgabenliste mit Erinnerung. Deshalb streng:
+  bestätigt sie in der App, danach landen sie in seiner Aufgabenliste. Deshalb streng:
   - Nur Aufgaben, die {name} selbst erledigen muss. Was andere tun sollen oder zugesagt haben, schlägst du nicht vor.
   - Bei „wir“, „man“, „jemand müsste“ ohne klaren Namen: vorschlagen, aber mit „unklar_wer“ = true.
   - Nicht vorschlagen: vage Wünsche („ich sollte mal mehr Sport machen“), was gleich erledigt wird oder schon
@@ -65,13 +65,19 @@ Regeln:
     übernehmen. Sonst: früh/morgens 08:00, vormittags 10:00, mittags 12:00, nachmittags 15:00, abends 19:00,
     spät/nachts 21:00, nur ein Tag ohne Tageszeit 08:00, „diese Woche“ Freitag 10:00, „nächste Woche“ Montag
     10:00, „am Wochenende“ Samstag 10:00. Ohne jede Zeitangabe bleibt „frist“ leer.
+- Lebensbereich („bereich“, für die Farben in der App): familie = Familie & Haushalt, musik = Musik & Gigs,
+  ich = Ich selbst (Gesundheit, Gefühle, eigenes Leben), projekte = Projekte & Ideen, finanzen = Finanzen Geschäft.
+  Für die ganze Aufnahme der Bereich, um den es hauptsächlich geht; für jede Aufgabe ihr eigener Bereich.
 - Ist die Aufnahme leer, unverständlich oder nur Rauschen, schreib eine einzige kurze Notiz mit Vorlage „tagebuch“
   und dem Titel „Kein verwertbarer Inhalt“.
 """
 
+BEREICHE = ["familie", "musik", "ich", "projekte", "finanzen"]
+
 SCHEMA = {
     "type": "object",
     "properties": {
+        "bereich": {"type": "string", "enum": BEREICHE, "description": "Hauptsächlicher Lebensbereich der Aufnahme."},
         "kurz": {"type": "string", "description": "Ein Satz, worum es in der Aufnahme geht (für die Liste in der App)."},
         "notizen": {
             "type": "array",
@@ -120,8 +126,9 @@ SCHEMA = {
                     "frist": {"type": "string", "description": "JJJJ-MM-TTTHH:MM oder leer"},
                     "unklar_wer": {"type": "boolean"},
                     "bezug": {"type": "string", "description": "Kennung einer offenen Aufgabe oder leer"},
+                    "bereich": {"type": "string", "enum": BEREICHE},
                 },
-                "required": ["art", "text", "frist", "unklar_wer", "bezug"],
+                "required": ["art", "text", "frist", "unklar_wer", "bezug", "bereich"],
                 "additionalProperties": False,
             },
         },
@@ -135,7 +142,7 @@ SCHEMA = {
             "additionalProperties": False,
         },
     },
-    "required": ["kurz", "notizen", "sprecher", "wichtig", "aufgaben", "vorlage_hinweis"],
+    "required": ["bereich", "kurz", "notizen", "sprecher", "wichtig", "aufgaben", "vorlage_hinweis"],
     "additionalProperties": False,
 }
 
@@ -248,9 +255,13 @@ def auswerten(text: Text, modus: str, start: str, dauer_s: float, hinweise: list
         except ValueError:
             frist = ""
         aufgaben.append({"art": a["art"], "text": text, "frist": frist, "unklar_wer": bool(a.get("unklar_wer")),
-                         "bezug": a.get("bezug", "") if a["art"] != "neu" else ""})
+                         "bezug": a.get("bezug", "") if a["art"] != "neu" else "",
+                         "bereich": a.get("bereich") if a.get("bereich") in BEREICHE else ""})
     daten["notizen"] = notizen
     daten["aufgaben"] = aufgaben
+    if daten.get("bereich") not in BEREICHE:
+        daten["bereich"] = ""
+
     hinweis = daten.get("vorlage_hinweis") or {}
     daten["vorlage_hinweis"] = hinweis if hinweis.get("vorlage") in KENNUNGEN and notizen \
         and hinweis["vorlage"] != notizen[0]["vorlage"] else None

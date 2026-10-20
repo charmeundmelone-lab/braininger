@@ -14,6 +14,10 @@
     <!-- Spracherkennung am Handy als Vordergrund-Dienst (bis 6 h am Tag), siehe
          developer.android.com/develop/background-work/services/fgs/service-types -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING" />
+    <!-- Fokus-Timer mit Glyph-Licht (Vordergrund-Dienst „specialUse“) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Termine im Heute-Überblick und Erinnerungen (nur lesen), Grill 20.10.2026 -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
     <!-- Erinnerungen zur Frist (Aufgabenliste), siehe developer.android.com/about/versions/14/changes/schedule-exact-alarms -->
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -84,6 +88,17 @@
 
         <receiver android:name=".ErinnerungEmpfaenger" android:exported="false" />
         <receiver android:name=".AufgabenAktion" android:exported="false" />
+        <receiver android:name=".TagesrhythmusEmpfaenger" android:exported="false" />
+        <receiver android:name=".TerminEmpfaenger" android:exported="false" />
+
+        <service
+            android:name=".FokusDienst"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Fokus-Timer: zeigt die Restzeit auf den Glyph-Lichtern (Nothing Glyph Developer Kit verlangt eine App im Vordergrund)" />
+        </service>
         <receiver android:name=".NeustartEmpfaenger" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

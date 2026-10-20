@@ -92,14 +92,23 @@ import java.util.Locale
 class MainActivity : ComponentActivity() {
 
     private var aktualisierung by mutableIntStateOf(0)
+    private var startReiter by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         AufnahmeDienst.kanaeleAnlegen(this)
         Erinnerungen.kanalAnlegen(this)
+        Tagesrhythmus.kanalAnlegen(this)
+        TerminErinnerung.kanalAnlegen(this)
         Erinnerungen.allePlanen(this)
-        setContent { BrainingerThema { Startseite(aktualisierung) } }
+        startReiter = intent?.getStringExtra(Tagesrhythmus.EXTRA_REITER)
+        setContent { BrainingerThema { Startseite(aktualisierung, startReiter) { startReiter = null } } }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        intent.getStringExtra(Tagesrhythmus.EXTRA_REITER)?.let { startReiter = it }
     }
 
     override fun onResume() {
@@ -118,7 +127,7 @@ private fun dauerText(ms: Long): String {
 }
 
 @Composable
-private fun Startseite(aktualisierung: Int) {
+private fun Startseite(aktualisierung: Int, startReiter: String?, reiterGelesen: () -> Unit) {
     val context = LocalContext.current
     val zustand by AufnahmeStatus.zustand.collectAsStateWithLifecycle()
 
@@ -149,6 +158,15 @@ private fun Startseite(aktualisierung: Int) {
     var vonPapierkorb by remember { mutableStateOf(false) }
     val rueckgaengig by rueckgaengigHinweis
     val scope = rememberCoroutineScope()
+    var reiter by remember { mutableStateOf("heute") }
+    var zeigeEinstellungen by remember { mutableStateOf(false) }
+    LaunchedEffect(startReiter) {
+        startReiter?.let {
+            reiter = it
+            offen = null; zeigeArchiv = false; zeigePapierkorb = false; zeigeUebersicht = false; zeigeEinstellungen = false
+            reiterGelesen()
+        }
+    }
 
     fun pruefen() {
         mikroErlaubt = context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
@@ -249,8 +267,8 @@ private fun Startseite(aktualisierung: Int) {
         UebersichtSeite { zeigeUebersicht = false }
         return
     }
-    if (zeigeFragen) {
-        FrageSeite(zurueck = { zeigeFragen = false }) { id -> zeigeFragen = false; vonFragen = true; offen = id }
+    if (zeigeEinstellungen) {
+        EinstellungenSeite { zeigeEinstellungen = false }
         return
     }
     val offeneAufnahme = offen?.let { name -> aufnahmen.firstOrNull { it.ordner.name == name } }
@@ -260,7 +278,7 @@ private fun Startseite(aktualisierung: Int) {
             offen = null
             // aus einer Antwort oder dem Archiv geöffnet: dorthin zurück
             if (vonFragen) {
-                vonFragen = false; zeigeFragen = true
+                vonFragen = false; reiter = "fragen"
             }
             if (vonArchiv) {
                 vonArchiv = false; zeigeArchiv = true
@@ -324,6 +342,7 @@ private fun Startseite(aktualisierung: Int) {
         return
     }
     BackHandler(enabled = auswahl.isNotEmpty()) { auswahl = emptySet() }
+    BackHandler(enabled = auswahl.isEmpty() && reiter != "heute") { reiter = "heute" }
 
     // Suche findet alles, auch Archiviertes. Ohne Suche stehen vorne nur die letzten 7 Tage.
     val treffer = remember(sichtbar, ergebnisse, suche, archiviert) {
@@ -332,156 +351,99 @@ private fun Startseite(aktualisierung: Int) {
     }
     val imArchiv = sichtbar.count { !Ordnung.vorne(it, archiviert) }
     Box(Modifier.fillMaxSize().background(Schwarz)) {
-    // Die ganze Seite scrollt, damit Aufgaben, Vorschläge und Aufnahmen immer Platz haben
-    LazyColumn(
-        Modifier
-            .fillMaxSize()
-            .background(Schwarz)
-            .safeDrawingPadding()
-            .padding(horizontal = 20.dp)
-    ) {
-        item {
-        Column {
-        Spacer(Modifier.height(16.dp))
-        Text("BRAININGER", fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 34.sp, color = Weiss)
-        Text("Gedanken und Gespräche festhalten", color = Grau, fontSize = 13.sp)
-        Spacer(Modifier.height(28.dp))
-
-        if (zustand.laeuft) {
-            LaufendeAufnahme(zustand, jetzt) { AufnahmeDienst.stoppen(context) }
-        } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                GrosserKnopf("GEDANKE", Modifier.weight(1f), aktiv = mikroErlaubt) {
-                    AufnahmeDienst.starten(context, Modus.GEDANKE)
+    Column(Modifier.fillMaxSize().safeDrawingPadding()) {
+    Box(Modifier.weight(1f)) {
+    when (reiter) {
+        "aufgaben" -> Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(top = 16.dp)
+        ) { AufgabenSeite() }
+        "fragen" -> FrageSeite(zurueck = { reiter = "heute" }) { id -> vonFragen = true; offen = id }
+        "heute" -> Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)
+        ) {
+            Spacer(Modifier.height(16.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("BRAININGER", fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 34.sp, color = Weiss)
+                    Text("Gedanken und Gespräche festhalten", color = Grau, fontSize = 13.sp)
                 }
-                GrosserKnopf("GESPRÄCH", Modifier.weight(1f), aktiv = mikroErlaubt) {
-                    fragZustimmung = true
-                }
+                Text("⚙", color = Grau, fontSize = 26.sp, modifier = Modifier.clickable { zeigeEinstellungen = true }.padding(8.dp))
             }
-        }
+            Spacer(Modifier.height(24.dp))
 
-        Spacer(Modifier.height(20.dp))
-
-        if (!mikroErlaubt || !hinweiseErlaubt) {
-            Hinweis("Braininger braucht Zugriff auf das Mikrofon und darf Hinweise anzeigen.", "ERLAUBEN") {
-                erlaubnisAnfrage.launch(arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS))
-            }
-        }
-        if (!akkuFrei) {
-            Hinweis("Damit lange Aufnahmen bei gesperrtem Handy nicht abbrechen, die Akku-Optimierung für Braininger ausschalten.", "AUSSCHALTEN") {
-                @SuppressLint("BatteryLife")
-                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}"))
-                context.startActivity(intent)
-            }
-        }
-
-        if (tasteAus) {
-            Hinweis("Die Essential Key ist aus: Android hat die Bedienungshilfe für die Taste ausgeschaltet.", "EINSCHALTEN") {
-                TastenWache.einstellungenOeffnen(context)
-            }
-        }
-
-        if (googleFehlt) {
-            Hinweis("Für den Upload ins Google Drive einmal bei Google anmelden.", "ANMELDEN") { anmelden() }
-        }
-
-        AufgabenBereich()
-
-        testText?.let {
-            Text(
-                it, color = Grau, fontSize = 12.sp,
-                modifier = Modifier.heightIn(max = 140.dp).verticalScroll(rememberScrollState()).padding(bottom = 12.dp),
-            )
-        }
-
-        Row(Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            SeitenKnopf("ÜBERSICHT", Modifier.weight(1f)) { zeigeUebersicht = true }
-            SeitenKnopf("FRAGEN", Modifier.weight(1f)) { zeigeFragen = true }
-        }
-
-        Text("AUFNAHMEN", fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Grau)
-        Spacer(Modifier.height(4.dp))
-        if (aufnahmen.isNotEmpty()) {
-            OutlinedTextField(
-                value = suche, onValueChange = { suche = it.take(80) }, singleLine = true,
-                placeholder = { Text("Suchen in allen Notizen und Texten", color = Grau, fontSize = 14.sp) },
-                trailingIcon = if (suche.isNotEmpty()) {
-                    { Text("✕", color = Grau, fontSize = 16.sp, modifier = Modifier.clickable { suche = "" }.padding(8.dp)) }
-                } else null,
-                modifier = Modifier.fillMaxWidth(),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = Weiss, unfocusedTextColor = Weiss,
-                    focusedBorderColor = Weiss, unfocusedBorderColor = Linie, cursorColor = Weiss,
-                ),
-            )
-            Spacer(Modifier.height(4.dp))
-        }
-        if (aufnahmen.isEmpty()) {
-            Text("Noch keine Aufnahmen.", color = Grau, fontSize = 14.sp)
-        } else if (suche.isBlank() && treffer.isEmpty()) {
-            Text("Keine Aufnahmen der letzten ${Ordnung.TAGE_VORNE} Tage.", color = Grau, fontSize = 14.sp,
-                 modifier = Modifier.padding(vertical = 8.dp))
-        }
-        if (suche.isNotBlank()) {
-            Text(
-                if (treffer.isEmpty()) "Nichts gefunden." else "${treffer.size} Treffer",
-                color = Grau, fontSize = 12.sp, modifier = Modifier.padding(vertical = 4.dp),
-            )
-        }
-        }
-        }
-            items(treffer, key = { it.first.ordner.name }) { (a, ausschnitt) ->
-                val id = a.ordner.name
-                AufnahmeZeile(
-                    a, uploads[id], ergebnisse[id],
-                    ausgewaehlt = id in auswahl,
-                    lang = if (a.status == "laeuft") null else ({ auswahl = auswahl + id }),
-                ) {
-                    if (auswahl.isNotEmpty()) {
-                        if (a.status != "laeuft") auswahl = if (id in auswahl) auswahl - id else auswahl + id
-                    } else {
-                        offen = id
-                        ergebnisseHolen()
+            if (zustand.laeuft) {
+                LaufendeAufnahme(zustand, jetzt) { AufnahmeDienst.stoppen(context) }
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    GrosserKnopf("GEDANKE", Modifier.weight(1f), aktiv = mikroErlaubt) {
+                        AufnahmeDienst.starten(context, Modus.GEDANKE)
+                    }
+                    GrosserKnopf("GESPRÄCH", Modifier.weight(1f), aktiv = mikroErlaubt) {
+                        fragZustimmung = true
                     }
                 }
-                if (suche.isNotBlank() && ausschnitt.isNotBlank()) {
-                    Text(
-                        Suche.hervorheben(ausschnitt, suche), color = Grau, fontSize = 13.sp,
-                        modifier = Modifier.padding(bottom = 10.dp).clickable { offen = a.ordner.name },
-                    )
+            }
+            Spacer(Modifier.height(20.dp))
+
+            if (!mikroErlaubt || !hinweiseErlaubt) {
+                Hinweis("Braininger braucht Zugriff auf das Mikrofon und darf Hinweise anzeigen.", "ERLAUBEN") {
+                    erlaubnisAnfrage.launch(arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS))
                 }
-                HorizontalDivider(color = Linie)
             }
-        if (suche.isBlank() && (imArchiv > 0 || papierkorb.isNotEmpty())) {
-            item {
-                Spacer(Modifier.height(16.dp))
-                SeitenKnopf("ARCHIV ($imArchiv)", Modifier.fillMaxWidth()) { auswahl = emptySet(); zeigeArchiv = true }
+            if (!akkuFrei) {
+                Hinweis("Damit lange Aufnahmen bei gesperrtem Handy nicht abbrechen, die Akku-Optimierung für Braininger ausschalten.", "AUSSCHALTEN") {
+                    @SuppressLint("BatteryLife")
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}"))
+                    context.startActivity(intent)
+                }
             }
+            if (tasteAus) {
+                Hinweis("Die Essential Key ist aus: Android hat die Bedienungshilfe für die Taste ausgeschaltet.", "EINSCHALTEN") {
+                    TastenWache.einstellungenOeffnen(context)
+                }
+            }
+            if (googleFehlt) {
+                Hinweis("Für den Upload ins Google Drive einmal bei Google anmelden.", "ANMELDEN") { anmelden() }
+            }
+            testText?.let {
+                Text(
+                    it, color = Grau, fontSize = 12.sp,
+                    modifier = Modifier.heightIn(max = 140.dp).verticalScroll(rememberScrollState()).padding(bottom = 12.dp),
+                )
+            }
+
+            HeuteBereich(aktualisierung + abrufZaehler) { reiter = "aufgaben" }
         }
-        item {
-        Spacer(Modifier.height(if (auswahl.isNotEmpty() || rueckgaengig != null) 90.dp else 0.dp))
-        Text(
-            "Version ${BuildConfig.VERSION_NAME}",
-            color = Grau, fontSize = 11.sp,
-            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-            textAlign = TextAlign.Center,
+        else -> AufnahmenListe(
+            aufnahmen, treffer, suche, { suche = it }, uploads, ergebnisse, auswahl, { auswahl = it },
+            imArchiv, papierkorb.size, rueckgaengig != null,
+            oeffnen = { id -> offen = id; ergebnisseHolen() },
+            archivOeffnen = { auswahl = emptySet(); zeigeArchiv = true },
+            uebersichtOeffnen = { zeigeUebersicht = true },
         )
-        }
     }
-    if (auswahl.isNotEmpty()) {
-        AuswahlLeiste(auswahl.size, abbrechen = { auswahl = emptySet() }, Modifier.align(Alignment.BottomCenter)) {
-            TextButton(onClick = {
-                val ids = auswahl.toList()
-                Ordnung.archivieren(context, ids)
-                auswahl = emptySet()
-                rueckgaengigHinweis.value = Rueckgaengig(if (ids.size == 1) "Archiviert" else "${ids.size} archiviert") {
-                    Ordnung.zurueckholen(context, ids)
-                }
-            }) { Text("ARCHIVIEREN", color = Weiss, fontWeight = FontWeight.Bold) }
-            LoeschenKnopf(auswahl) { auswahl = emptySet(); ergebnisseHolen() }
+    }
+    ReiterLeiste(reiter) { reiter = it; auswahl = emptySet() }
+    }
+    if (reiter == "aufnahmen") {
+        val unten = Modifier.align(Alignment.BottomCenter).padding(bottom = 80.dp)
+        if (auswahl.isNotEmpty()) {
+            AuswahlLeiste(auswahl.size, abbrechen = { auswahl = emptySet() }, unten) {
+                TextButton(onClick = {
+                    val ids = auswahl.toList()
+                    Ordnung.archivieren(context, ids)
+                    auswahl = emptySet()
+                    rueckgaengigHinweis.value = Rueckgaengig(if (ids.size == 1) "Archiviert" else "${ids.size} archiviert") {
+                        Ordnung.zurueckholen(context, ids)
+                    }
+                }) { Text("ARCHIVIEREN", color = Weiss, fontWeight = FontWeight.Bold) }
+                LoeschenKnopf(auswahl) { auswahl = emptySet(); ergebnisseHolen() }
+            }
+        } else {
+            RueckgaengigLeiste(unten)
         }
     } else {
-        RueckgaengigLeiste(Modifier.align(Alignment.BottomCenter))
+        RueckgaengigLeiste(Modifier.align(Alignment.BottomCenter).padding(bottom = 80.dp))
     }
     }
 
@@ -635,9 +597,14 @@ internal fun AufnahmeZeile(
     Row(
         Modifier
             .fillMaxWidth()
-            .background(if (ausgewaehlt) Ausgewaehlt else androidx.compose.ui.graphics.Color.Transparent, RoundedCornerShape(8.dp))
+            .padding(vertical = 3.dp)
+            .background(
+                if (ausgewaehlt) Ausgewaehlt
+                else de.braininger.app.ui.Bereiche.von(ergebnis?.bereich)?.flaeche ?: androidx.compose.ui.graphics.Color.Transparent,
+                RoundedCornerShape(12.dp),
+            )
             .combinedClickable(onClick = oeffnen, onLongClick = lang)
-            .padding(vertical = 12.dp, horizontal = if (ausgewaehlt) 8.dp else 0.dp),
+            .padding(vertical = 10.dp, horizontal = if (ausgewaehlt || ergebnis?.bereich?.isNotBlank() == true) 10.dp else 0.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (ausgewaehlt) {

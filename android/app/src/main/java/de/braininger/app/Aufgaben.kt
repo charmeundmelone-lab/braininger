@@ -29,7 +29,14 @@ import java.util.Date
 import java.util.Locale
 import java.util.UUID
 
-/** Eine Aufgabe in Jans Liste. frist und erledigt: Millisekunden oder null. */
+/** Ein kleiner Schritt einer zerlegten Aufgabe („Aufgabe kleiner machen“). */
+data class Schritt(val text: String, val erledigt: Boolean = false)
+
+/**
+ * Eine Aufgabe in Jans Liste. frist und erledigt: Millisekunden oder null.
+ * Körbe statt Uhrzeiten (Grill 20.10.2026): korb = heute | woche | irgendwann, neue Aufgaben starten in „irgendwann“.
+ * Eine Frist schiebt die Aufgabe von selbst nach vorn (siehe [korbJetzt]); zurueckAm = „morgen wieder“.
+ */
 data class Aufgabe(
     val id: String,
     val text: String,
@@ -38,7 +45,78 @@ data class Aufgabe(
     val quelle: String?,
     val erstellt: Long,
     val unklarWer: Boolean = false,
-)
+    val korb: String = Koerbe.IRGENDWANN,
+    val heuteSeit: Long? = null,
+    val zurueckAm: Long? = null,
+    val bereich: String = "",
+    val schritte: List<Schritt> = emptyList(),
+) {
+    /** Korb, in dem die Aufgabe jetzt steht. Eine Frist zieht sie am Vortag nach „heute“, in der Woche davor nach „woche“. */
+    fun korbJetzt(jetzt: Long = System.currentTimeMillis()): String {
+        zurueckAm?.let { if (it > jetzt) return Koerbe.WOCHE }
+        frist?.let { f ->
+            val tage = Koerbe.tageBis(f, jetzt)
+            if (tage <= 1) return Koerbe.HEUTE
+            if (tage <= 7 && korb == Koerbe.IRGENDWANN) return Koerbe.WOCHE
+        }
+        if (zurueckAm != null) return Koerbe.HEUTE // „morgen wieder“ ist erreicht
+        return korb
+    }
+
+    /** Seit wann die Aufgabe schon in „heute“ steht, wenn das vor heute war (für das ruhige „seit Montag“), sonst null. */
+    fun heuteSeitFrueher(jetzt: Long = System.currentTimeMillis()): Long? {
+        if (korbJetzt(jetzt) != Koerbe.HEUTE) return null
+        val heuteBeginn = Koerbe.tagBeginn(jetzt)
+        val seit = listOfNotNull(heuteSeit, zurueckAm, frist?.let { it - 86_400_000L }).minOrNull() ?: return null
+        return seit.takeIf { it < heuteBeginn }
+    }
+}
+
+object Koerbe {
+    const val HEUTE = "heute"
+    const val WOCHE = "woche"
+    const val IRGENDWANN = "irgendwann"
+
+    fun name(korb: String) = when (korb) {
+        HEUTE -> "Heute"
+        WOCHE -> "Diese Woche"
+        else -> "Irgendwann"
+    }
+
+    fun tagBeginn(ms: Long): Long = Calendar.getInstance().apply {
+        timeInMillis = ms
+        set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+
+    /** Ganze Tage von heute bis zum Tag der Frist (0 = heute, negativ = vorbei). */
+    fun tageBis(frist: Long, jetzt: Long = System.currentTimeMillis()): Int =
+        Math.round((tagBeginn(frist) - tagBeginn(jetzt)) / 86_400_000.0).toInt()
+
+    fun morgenBeginn(jetzt: Long = System.currentTimeMillis()): Long = tagBeginn(jetzt) + 86_400_000L + 3_600_000L
+
+    /** „seit Montag“ / „seit gestern“ – nur ein Hinweis, keine Warnfarbe. */
+    fun seitText(ms: Long, jetzt: Long = System.currentTimeMillis()): String {
+        val t = -tageBis(ms, jetzt)
+        return when {
+            t <= 0 -> "seit heute"
+            t == 1 -> "seit gestern"
+            t <= 6 -> "seit " + SimpleDateFormat("EEEE", Locale.GERMANY).format(Date(ms))
+            else -> "seit " + SimpleDateFormat("d. MMMM", Locale.GERMANY).format(Date(ms))
+        }
+    }
+
+    /** Frist ohne Uhrzeit: „bis Fr“, „bis morgen“. */
+    fun fristText(ms: Long, jetzt: Long = System.currentTimeMillis()): String {
+        val t = tageBis(ms, jetzt)
+        return when {
+            t < 0 -> "Frist war " + SimpleDateFormat("EE d.M.", Locale.GERMANY).format(Date(ms))
+            t == 0 -> "bis heute"
+            t == 1 -> "bis morgen"
+            t <= 6 -> "bis " + SimpleDateFormat("EE", Locale.GERMANY).format(Date(ms))
+            else -> "bis " + SimpleDateFormat("d.M.", Locale.GERMANY).format(Date(ms))
+        }
+    }
+}
 
 /** Vorschlag des Laptops aus einer Aufnahme. art: neu | ergaenzen | erledigt; bezug = Kennung einer Aufgabe. */
 data class Vorschlag(
@@ -49,6 +127,7 @@ data class Vorschlag(
     val frist: Long?,
     val unklarWer: Boolean,
     val bezug: String?,
+    val bereich: String = "",
 )
 
 /**
@@ -83,9 +162,17 @@ object AufgabenSpeicher {
         val a = j.optJSONArray("aufgaben") ?: return emptyList()
         return (0 until a.length()).mapNotNull { i ->
             val o = a.optJSONObject(i) ?: return@mapNotNull null
+            val s = o.optJSONArray("schritte")
             Aufgabe(
                 o.optString("id"), o.optString("text"), zeitLesen(o.optString("frist")), zeitLesen(o.optString("erledigt")),
                 o.optString("quelle").ifBlank { null }, zeitLesen(o.optString("erstellt")) ?: 0L, o.optBoolean("unklar_wer"),
+                korb = o.optString("korb").takeIf { it == Koerbe.HEUTE || it == Koerbe.WOCHE } ?: Koerbe.IRGENDWANN,
+                heuteSeit = zeitLesen(o.optString("heute_seit")),
+                zurueckAm = zeitLesen(o.optString("zurueck_am")),
+                bereich = o.optString("bereich"),
+                schritte = (0 until (s?.length() ?: 0)).mapNotNull { k ->
+                    s!!.optJSONObject(k)?.let { Schritt(it.optString("text"), it.optBoolean("erledigt")) }
+                }.filter { it.text.isNotBlank() },
             )
         }.filter { it.id.isNotBlank() && it.text.isNotBlank() }
     }
@@ -102,6 +189,9 @@ object AufgabenSpeicher {
             JSONObject().put("id", it.id).put("text", it.text).put("frist", zeitText(it.frist))
                 .put("erledigt", zeitText(it.erledigt)).put("quelle", it.quelle ?: "")
                 .put("erstellt", zeitText(it.erstellt)).put("unklar_wer", it.unklarWer)
+                .put("korb", it.korb).put("heute_seit", zeitText(it.heuteSeit)).put("zurueck_am", zeitText(it.zurueckAm))
+                .put("bereich", it.bereich)
+                .put("schritte", JSONArray(it.schritte.map { s -> JSONObject().put("text", s.text).put("erledigt", s.erledigt) }))
         })).toString(1)
 
     @Synchronized
@@ -121,10 +211,52 @@ object AufgabenSpeicher {
         speichern(context, liste)
     }
 
-    fun neu(context: Context, text: String, frist: Long?, quelle: String? = null, unklarWer: Boolean = false) =
+    fun neu(context: Context, text: String, frist: Long?, quelle: String? = null, unklarWer: Boolean = false,
+            korb: String = Koerbe.IRGENDWANN) =
         aendern(context) {
-            it += Aufgabe(UUID.randomUUID().toString().take(8), text.trim(), frist, null, quelle, System.currentTimeMillis(), unklarWer)
+            it += Aufgabe(UUID.randomUUID().toString().take(8), text.trim(), frist, null, quelle, System.currentTimeMillis(), unklarWer,
+                korb = korb, heuteSeit = if (korb == Koerbe.HEUTE) System.currentTimeMillis() else null)
         }
+
+    /** Tipp „heute / später“ (Grill 20.10.2026, Frage 14) und „holen“ aus dem Wochenblick. */
+    fun korbSetzen(context: Context, id: String, korb: String) = aendern(context) { l ->
+        val jetzt = System.currentTimeMillis()
+        l.replaceAll {
+            if (it.id != id) it
+            else it.copy(korb = korb, heuteSeit = if (korb == Koerbe.HEUTE) jetzt else null, zurueckAm = null)
+        }
+    }
+
+    /** „Morgen“: verschwindet bis morgen früh aus „heute“ und kommt dann wieder. */
+    fun morgenWieder(context: Context, id: String) = aendern(context) { l ->
+        l.replaceAll { if (it.id == id) it.copy(korb = Koerbe.HEUTE, heuteSeit = null, zurueckAm = Koerbe.morgenBeginn()) else it }
+    }
+
+    fun schritteSetzen(context: Context, id: String, schritte: List<Schritt>) = aendern(context) { l ->
+        l.replaceAll { if (it.id == id) it.copy(schritte = schritte) else it }
+    }
+
+    /** Schritt abhaken; sind alle Schritte erledigt, ist die Aufgabe erledigt (Frage 32). */
+    fun schrittAbhaken(context: Context, id: String, index: Int) = aendern(context) { l ->
+        l.replaceAll { a ->
+            if (a.id != id || index !in a.schritte.indices) a
+            else {
+                val neu = a.schritte.mapIndexed { i, s -> if (i == index) s.copy(erledigt = !s.erledigt) else s }
+                a.copy(schritte = neu, erledigt = if (neu.all { it.erledigt }) System.currentTimeMillis() else null)
+            }
+        }
+    }
+
+    /**
+     * „Behalten“ im Wochenblick: die Aufgabe bleibt in „irgendwann“, zählt aber wieder als neu, damit sie nicht
+     * gleich im nächsten Wochenblick steht.
+     */
+    fun behalten(context: Context, id: String) = aendern(context) { l ->
+        l.replaceAll { if (it.id == id) it.copy(erstellt = System.currentTimeMillis()) else it }
+    }
+
+    /** Offene Aufgaben in einem Korb (nach [Aufgabe.korbJetzt]). */
+    fun imKorb(context: Context, korb: String): List<Aufgabe> = offene(context).filter { it.korbJetzt() == korb }
 
     fun abhaken(context: Context, id: String) = aendern(context) { l ->
         l.replaceAll { if (it.id == id) it.copy(erledigt = System.currentTimeMillis()) else it }
@@ -136,8 +268,8 @@ object AufgabenSpeicher {
         l.replaceAll { if (it.id == id) it.copy(frist = frist) else it }
     }
 
-    /** „Morgen“ in der Erinnerung: morgen um 8 Uhr. */
-    fun aufMorgen(context: Context, id: String) = fristSetzen(context, id, morgenAcht())
+    /** „Morgen“ in einer Benachrichtigung. */
+    fun aufMorgen(context: Context, id: String) = morgenWieder(context, id)
 
     fun morgenAcht(): Long = Calendar.getInstance().apply {
         add(Calendar.DAY_OF_YEAR, 1); set(Calendar.HOUR_OF_DAY, 8); set(Calendar.MINUTE, 0)
@@ -160,7 +292,8 @@ object AufgabenSpeicher {
         return (0 until a.length()).mapNotNull { i ->
             val o = a.optJSONObject(i) ?: return@mapNotNull null
             Vorschlag(o.optString("id"), o.optString("aufnahme"), o.optString("art", "neu"), o.optString("text"),
-                zeitLesen(o.optString("frist")), o.optBoolean("unklar_wer"), o.optString("bezug").ifBlank { null })
+                zeitLesen(o.optString("frist")), o.optBoolean("unklar_wer"), o.optString("bezug").ifBlank { null },
+                o.optString("bereich"))
         }
     }
 
@@ -168,6 +301,7 @@ object AufgabenSpeicher {
         schreiben(vorschlagDatei(context), JSONArray(liste.map {
             JSONObject().put("id", it.id).put("aufnahme", it.aufnahme).put("art", it.art).put("text", it.text)
                 .put("frist", zeitText(it.frist)).put("unklar_wer", it.unklarWer).put("bezug", it.bezug ?: "")
+                .put("bereich", it.bereich)
         }).toString(1))
         _stand.value++
     }
@@ -197,9 +331,12 @@ object AufgabenSpeicher {
                 "ergaenzen" -> if (l.any { it.id == v.bezug }) {
                     l.replaceAll { if (it.id == v.bezug) it.copy(text = v.text, frist = v.frist ?: it.frist) else it }
                 } else {
-                    l += Aufgabe(UUID.randomUUID().toString().take(8), v.text, v.frist, null, v.aufnahme, System.currentTimeMillis(), v.unklarWer)
+                    l += Aufgabe(UUID.randomUUID().toString().take(8), v.text, v.frist, null, v.aufnahme, System.currentTimeMillis(),
+                        v.unklarWer, bereich = v.bereich)
                 }
-                else -> l += Aufgabe(UUID.randomUUID().toString().take(8), v.text, v.frist, null, v.aufnahme, System.currentTimeMillis(), v.unklarWer)
+                // neue Aufgaben starten in „irgendwann“ (Frage 58); eine Frist zieht sie von selbst nach vorn
+                else -> l += Aufgabe(UUID.randomUUID().toString().take(8), v.text, v.frist, null, v.aufnahme, System.currentTimeMillis(),
+                    v.unklarWer, bereich = v.bereich)
             }
         }
         vorschlaegeSchreiben(context, alleV.filter { it.id !in ids })
@@ -244,23 +381,17 @@ object Erinnerungen {
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 
-    /** Plant alle offenen Aufgaben mit Frist in der Zukunft; erledigte und gelöschte werden abgemeldet. */
+    /**
+     * Minutengenaue Erinnerungen an Aufgaben gibt es nicht mehr (Grill 20.10.2026: keine Uhrzeiten, stattdessen
+     * nachmittags ein sanfter Stups, siehe Tagesrhythmus). Früher geplante werden hier abgemeldet; dazu plant
+     * die Funktion den Tagesrhythmus und die Termin-Erinnerungen neu (läuft nach Neustart, Update und Änderungen).
+     */
     fun allePlanen(context: Context) {
         val am = context.getSystemService(AlarmManager::class.java)
-        val jetzt = System.currentTimeMillis()
         val geplant = context.getSharedPreferences("erinnerungen", Context.MODE_PRIVATE)
-        val vorher = geplant.getStringSet("ids", emptySet()).orEmpty()
-        val jetztGeplant = mutableSetOf<String>()
-        for (a in AufgabenSpeicher.alle(context)) {
-            val f = a.frist
-            if (a.erledigt != null || f == null || f <= jetzt) continue
-            val pi = absicht(context, a.id)
-            if (am.canScheduleExactAlarms()) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, f, pi)
-            else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, f, pi)
-            jetztGeplant += a.id
-        }
-        for (id in vorher - jetztGeplant) am.cancel(absicht(context, id))
-        geplant.edit().putStringSet("ids", jetztGeplant).apply()
+        for (id in geplant.getStringSet("ids", emptySet()).orEmpty()) am.cancel(absicht(context, id))
+        geplant.edit().putStringSet("ids", emptySet()).apply()
+        Tagesrhythmus.planen(context)
     }
 
     fun zeigen(context: Context, a: Aufgabe) {
