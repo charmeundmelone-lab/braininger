@@ -90,6 +90,16 @@
         <receiver android:name=".AufgabenAktion" android:exported="false" />
         <receiver android:name=".TagesrhythmusEmpfaenger" android:exported="false" />
         <receiver android:name=".TerminEmpfaenger" android:exported="false" />
+        <!-- Claude-Schlüssel vom Laptop per adb (api_schluessel.py). Nur wer WRITE_SECURE_SETTINGS hat, darf senden:
+             das System und die adb-Shell, keine andere App. -->
+        <receiver
+            android:name=".SchluesselEmpfaenger"
+            android:exported="true"
+            android:permission="android.permission.WRITE_SECURE_SETTINGS">
+            <intent-filter>
+                <action android:name="de.braininger.SCHLUESSEL_SETZEN" />
+            </intent-filter>
+        </receiver>
 
         <service
             android:name=".FokusDienst"
