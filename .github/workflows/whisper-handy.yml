@@ -17,16 +17,17 @@ jobs:
         run: git clone --depth 1 --branch v1.9.5 https://github.com/ggml-org/whisper.cpp.git
 
       - name: Werkzeuge für die Vulkan-Variante (glslc, Vulkan-Header)
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq glslc libvulkan-dev
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq glslc libvulkan-dev spirv-headers && find /usr -name "SPIRV-HeadersConfig.cmake" -o -name vulkan.hpp | head
 
       - name: Für Android arm64 bauen (CPU mit dotprod/i8mm/fp16 und Vulkan für die Adreno-GPU)
         run: |
           cd whisper.cpp
           COMMON="-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-33 -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DGGML_NATIVE=OFF -DGGML_OPENMP=OFF -DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod+i8mm+fp16 -DWHISPER_BUILD_EXAMPLES=ON -DWHISPER_BUILD_TESTS=OFF -DWHISPER_SDL2=OFF"
+          mkdir -p $HOME/vkh && cp -r /usr/include/vulkan /usr/include/vk_video $HOME/vkh/ 2>/dev/null; ls $HOME/vkh
           cmake -B build-neon $COMMON
           cmake --build build-neon -j4 --target whisper-cli whisper-bench
           mkdir -p ../aus/neon && cp build-neon/bin/whisper-cli build-neon/bin/whisper-bench ../aus/neon/
-          if cmake -B build-vulkan $COMMON -DGGML_VULKAN=ON -DVulkan_GLSLC_EXECUTABLE=$(which glslc) && cmake --build build-vulkan -j4 --target whisper-cli whisper-bench; then
+          if cmake -B build-vulkan $COMMON -DGGML_VULKAN=ON -DVulkan_GLSLC_EXECUTABLE=$(which glslc) -DSPIRV-Headers_DIR=$(dirname $(find /usr -name SPIRV-HeadersConfig.cmake | head -1)) -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH -DCMAKE_C_FLAGS="-isystem $HOME/vkh" -DCMAKE_CXX_FLAGS="-isystem $HOME/vkh" && cmake --build build-vulkan -j4 --target whisper-cli whisper-bench; then
             mkdir -p ../aus/vulkan && cp build-vulkan/bin/whisper-cli build-vulkan/bin/whisper-bench ../aus/vulkan/
           else
             echo "::warning::Vulkan-Bau fehlgeschlagen"
