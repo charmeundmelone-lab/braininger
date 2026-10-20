@@ -18,14 +18,14 @@ static void json_text(std::string &aus, const char *s) {
     for (const unsigned char *p = (const unsigned char *) s; *p; ++p) {
         switch (*p) {
             case '"': aus += "\\\""; break;
-            case '\': aus += "\\\\"; break;
-            case '\n': aus += "\n"; break;
-            case '\r': aus += "\r"; break;
-            case '\t': aus += "\t"; break;
+            case '\\': aus += "\\\\"; break;
+            case '\n': aus += "\\n"; break;
+            case '\r': aus += "\\r"; break;
+            case '\t': aus += "\\t"; break;
             default:
                 if (*p < 0x20) {
                     char b[8];
-                    snprintf(b, sizeof b, "\u%04x", *p);
+                    snprintf(b, sizeof b, "\\u%04x", *p);
                     aus += b;
                 } else {
                     aus += (char) *p;
