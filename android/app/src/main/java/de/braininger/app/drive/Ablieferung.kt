@@ -48,6 +48,7 @@ object WarteHinweis {
         val wartend = Ablage.alle(context).filter { a ->
             val ende = a.ende ?: return@filter false
             UploadStand.lesen(a.ordner).abgeschlossen && jetzt - ende > GRENZE_MS &&
+                !de.braininger.app.erkennung.HandyAuswertung.inArbeit(a.ordner) &&
                 (Ergebnis.lesen(a.ordner)?.status ?: "hochgeladen") == "hochgeladen"
         }.map { it.ordner.name }.sorted()
         val vorlieben = context.getSharedPreferences("hinweise", Context.MODE_PRIVATE)

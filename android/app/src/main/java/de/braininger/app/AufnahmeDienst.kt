@@ -79,6 +79,7 @@ class AufnahmeDienst : Service() {
     private var ordner: File? = null
     private var modus = Modus.GEDANKE
     private var start = 0L
+    private var auswertung = "laptop" // handy, sobald ein Claude-Schlüssel eingetragen ist
     private val stuecke = mutableListOf<String>()
     private val hinweise = mutableListOf<String>()
     private val markierungen = mutableListOf<Long>() // Sekunden ab Aufnahmebeginn
@@ -122,6 +123,9 @@ class AufnahmeDienst : Service() {
     private fun aufnahmeStarten(m: Modus) {
         modus = m
         start = System.currentTimeMillis()
+        // Eine laufende Spracherkennung macht Pause, damit die Aufnahme die volle Rechenkraft hat
+        de.braininger.app.erkennung.Whisper.abbrechen()
+        auswertung = if (de.braininger.app.erkennung.HandyAuswertung.sollAmHandy(this)) "handy" else "laptop"
         stuecke.clear()
         hinweise.clear()
         markierungen.clear()
@@ -228,6 +232,7 @@ class AufnahmeDienst : Service() {
             haupt.post {
                 infoSchreiben(ende = System.currentTimeMillis(), status = "fertig")
                 HochladenAuftrag.anstossen(this)
+                de.braininger.app.erkennung.HandyAuswertung.anstossen(this)
                 weckSperre?.let { if (it.isHeld) it.release() }
                 weckSperre = null
                 AufnahmeStatus.setzen(AufnahmeZustand(laeuft = false))
@@ -244,7 +249,7 @@ class AufnahmeDienst : Service() {
             Ablage.infoSchreiben(
                 o, modus, start, ende, stuecke.toList(),
                 AufnahmeStatus.zustand.value.mikrofon.ifBlank { MikroWahl.name(null) },
-                status, hinweise.toList(), markierungen.toList(), fotos.toList(),
+                status, hinweise.toList(), markierungen.toList(), fotos.toList(), auswertung,
             )
         } catch (e: Exception) {
             hinweisZeigen("Speichern fehlgeschlagen", e.message ?: "unbekannter Fehler")

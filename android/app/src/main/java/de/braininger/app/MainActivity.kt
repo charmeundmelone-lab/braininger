@@ -618,7 +618,9 @@ internal fun AufnahmeZeile(
     ausgewaehlt: Boolean = false, lang: (() -> Unit)? = null, hinweis: String? = null, oeffnen: () -> Unit,
 ) {
     val datum = remember(a.start) { SimpleDateFormat("EE dd.MM. HH:mm", Locale.GERMANY).format(Date(a.start)) }
+    val handy = de.braininger.app.erkennung.HandyAuswertung.statusText(androidx.compose.ui.platform.LocalContext.current, a)
     val statusText = when {
+        handy != null -> handy
         ergebnis != null && upload?.abgeschlossen == true ->
             ergebnis.anzeige + if (upload.audioGeloescht) "\nAudio gelöscht" else ""
         upload?.abgeschlossen == true -> "im Drive"

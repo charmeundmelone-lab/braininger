@@ -39,6 +39,12 @@ jobs:
           mkdir -p app/libs
           curl -fsSL -o app/libs/glyph-matrix-sdk-2.0.aar "https://raw.githubusercontent.com/Nothing-Developer-Programme/Glyph-Developer-Kit/main/sdk/glyph-matrix-sdk-2.0.aar"
 
+      - name: whisper.cpp v1.9.5 laden (Spracherkennung am Handy, MIT-Lizenz)
+        run: |
+          git clone --depth 1 --branch v1.9.5 https://github.com/ggml-org/whisper.cpp.git app/whisper.cpp
+          mkdir -p app/src/main/assets/lizenzen
+          cp app/whisper.cpp/LICENSE app/src/main/assets/lizenzen/whisper.cpp_MIT.txt
+
       - name: Signierschlüssel bereitstellen
         env:
           KEYSTORE_BASE64: ${{ secrets.BRAININGER_KEYSTORE_BASE64 }}

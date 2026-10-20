@@ -11,6 +11,8 @@ val schluesselDatei: String? = System.getenv("BRAININGER_KEYSTORE")
 android {
     namespace = "de.braininger.app"
     compileSdk = 35
+    // Spracherkennung (whisper.cpp) wird mit dem NDK übersetzt; auf GitHub liegt es unter ANDROID_NDK_LATEST_HOME
+    System.getenv("ANDROID_NDK_LATEST_HOME")?.let { ndkPath = it }
 
     defaultConfig {
         applicationId = "de.braininger.app"
@@ -18,6 +20,19 @@ android {
         targetSdk = 35
         versionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
         versionName = "0.1.${System.getenv("GITHUB_RUN_NUMBER") ?: "0"}"
+        ndk { abiFilters += "arm64-v8a" } // nur Jans Phone (3a); whisper.cpp ist auf ARMv8.2 mit i8mm abgestimmt
+        externalNativeBuild {
+            cmake { arguments += listOf("-DCMAKE_BUILD_TYPE=Release", "-DANDROID_STL=c++_static") }
+        }
+    }
+
+    externalNativeBuild {
+        cmake { path = file("src/main/cpp/CMakeLists.txt") }
+    }
+
+    packaging {
+        // Die Claude-Bibliothek bringt doppelte Lizenz-/Metadateien mit
+        resources.excludes += listOf("META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/*.kotlin_module", "META-INF/versions/9/previous-compilation-data.bin")
     }
 
     signingConfigs {
@@ -69,5 +84,7 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.4.1")
     implementation("androidx.camera:camera-view:1.4.1")
     implementation("androidx.compose.ui:ui-tooling-preview")
+    // Claude direkt vom Handy (offizielles SDK von Anthropic, Version vom 30.09.2026)
+    implementation("com.anthropic:anthropic-java:2.68.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

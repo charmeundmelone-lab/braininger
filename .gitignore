@@ -43,3 +43,7 @@ android/app/src/main/assets/lizenzen/
 
 # Glyph Developer Kit (wird beim Bau geladen)
 android/app/libs/
+
+# whisper.cpp (wird beim Bau geladen)
+android/app/whisper.cpp/
+android/app/.cxx/

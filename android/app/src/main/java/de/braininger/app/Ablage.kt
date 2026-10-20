@@ -48,7 +48,10 @@ object Ablage {
         ordner: File, modus: Modus, start: Long, ende: Long?,
         stuecke: List<String>, mikrofon: String, status: String, hinweise: List<String>,
         markierungen: List<Long> = emptyList(), fotos: List<Pair<String, Long>> = emptyList(),
+        auswertung: String? = null,
     ) {
+        // handy | laptop (Grill 20.10.2026). Ohne Angabe bleibt der bisherige Wert stehen.
+        val wo = auswertung ?: infoLesen(ordner)?.optString("auswertung")?.takeIf { it.isNotBlank() }
         val json = JSONObject().apply {
             put("version", 1)
             put("id", ordner.name)
@@ -63,6 +66,7 @@ object Ablage {
             put("markierungen", JSONArray(markierungen))
             put("fotos", JSONArray(fotos.map { (datei, sek) -> JSONObject().put("datei", datei).put("zeit_s", sek) }))
             put("app_version", BuildConfig.VERSION_NAME)
+            if (wo != null) put("auswertung", wo)
         }
         val tmp = File(ordner, "info.json.tmp")
         tmp.writeText(json.toString(2))

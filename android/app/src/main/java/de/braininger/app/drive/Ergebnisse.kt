@@ -55,6 +55,8 @@ data class Ergebnis(
     val vorschlaege: List<Vorschlag> = emptyList(),
     /** Standard-Vorlage genommen, aber diese passt laut Claude besser: Kennung und Grund. */
     val vorlageHinweis: Pair<String, String>? = null,
+    /** handy = am Handy ausgewertet (Whisper + Claude-API), sonst Laptop. */
+    val quelle: String? = null,
 ) {
     val endgueltig get() = status == "fertig" || status == "fehler"
 
@@ -62,7 +64,7 @@ data class Ergebnis(
     val anzeige: String
         get() = when (status) {
             "hochgeladen" -> "wartet auf Laptop"
-            "in_arbeit" -> when (schritt) {
+            "in_arbeit" -> if (quelle == "handy") "Claude schreibt" else when (schritt) {
                 "sprecher" -> "Laptop: Sprecher"
                 "text" -> "Laptop: Text ${(fortschritt * 100).toInt()} %"
                 "auswertung" -> "Laptop: Claude schreibt"
@@ -127,6 +129,7 @@ data class Ergebnis(
                 }.filter { it.text.isNotBlank() },
                 vorlageHinweis = hinweis?.optString("vorlage")?.takeIf { it.isNotBlank() }
                     ?.let { it to hinweis.optString("grund") },
+                quelle = j.optString("quelle").takeUnless { j.isNull("quelle") || it.isBlank() },
             )
         } catch (_: Exception) {
             null
@@ -210,6 +213,8 @@ object ErgebnisAbruf {
             val stand = UploadStand.lesen(a.ordner)
             val id = stand.ergebnisId ?: continue
             if (!stand.abgeschlossen) continue
+            // Am Handy ausgewertet und noch nicht fertig im Drive: lokale Fassung ist die richtige
+            if (!de.braininger.app.erkennung.HandyAuswertung.abrufErlaubt(a.ordner)) continue
             val alt = Ergebnis.lesen(a.ordner)
             val zeitDatei = File(a.ordner, "ergebnis_geaendert.txt")
             val bekannt = zeitDatei.takeIf { it.exists() }?.readText()
@@ -358,6 +363,13 @@ class ErgebnisAuftrag(context: Context, params: WorkerParameters) : CoroutineWor
     override suspend fun doWork(): Result = try {
         de.braininger.app.TastenWache.pruefen(applicationContext) // braucht kein Netz, deshalb zuerst
         ErgebnisAbruf.benachrichtigen(applicationContext, ErgebnisAbruf.abrufen(applicationContext))
+        // Handy-Auswertung: liegengebliebenes ins Drive, Wartendes wieder anstoßen
+        nebenbei {
+            ErgebnisAbruf.benachrichtigen(applicationContext, de.braininger.app.erkennung.HandyAuswertung.hochladen(applicationContext))
+            if (de.braininger.app.erkennung.HandyAuswertung.offeneAufnahmen(applicationContext).isNotEmpty()) {
+                de.braininger.app.erkennung.HandyAuswertung.anstossen(applicationContext)
+            }
+        }
         AudioAufraeumen.aufraeumen(applicationContext)
         WarteHinweis.pruefen(applicationContext)
         // Zusatzteile: ein Fehler hier darf die übrigen nicht aufhalten
