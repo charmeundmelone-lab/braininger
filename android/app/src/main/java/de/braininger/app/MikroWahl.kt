@@ -75,7 +75,9 @@ object MikroWahl {
     fun name(geraet: AudioDeviceInfo?): String = when {
         geraet == null -> "eingebautes Mikrofon"
         geraet.type == AudioDeviceInfo.TYPE_BUILTIN_MIC -> "eingebautes Mikrofon"
-        else -> geraet.productName?.toString()?.takeIf { it.isNotBlank() }
-            ?: if (geraet.type in bluetooth) "Bluetooth-Kopfhörer" else "externes Mikrofon"
+        // Beim Bluetooth-Mikrofon meldet Android als Namen oft das Handy selbst (am 20.10.2026: „A059“)
+        geraet.type in bluetooth -> geraet.productName?.toString()
+            ?.takeIf { it.isNotBlank() && it != android.os.Build.MODEL && it != android.os.Build.DEVICE } ?: "Bluetooth-Kopfhörer"
+        else -> geraet.productName?.toString()?.takeIf { it.isNotBlank() } ?: "externes Mikrofon"
     }
 }
