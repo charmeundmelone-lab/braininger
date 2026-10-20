@@ -123,6 +123,8 @@ object TerminErinnerung {
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setOngoing(true)
+            // 15 Minuten nach Beginn ist sie überholt und geht von selbst weg (sonst stand am 20.10. um 22:20 noch „In 4 Min“ für 20:15)
+            .setTimeoutAfter(maxOf(beginn + 15 * 60_000L - jetzt, 60_000L))
             .setContentIntent(oeffnen)
             .setDeleteIntent(absicht(context, WEG, ereignis, beginn, 3))
             .addAction(0, "OK, BIN DRAN", absicht(context, OK, ereignis, beginn, 1))

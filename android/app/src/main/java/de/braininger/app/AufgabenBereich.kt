@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -171,7 +172,9 @@ internal fun KleinerKnopf(text: String, hell: Boolean = true, onClick: () -> Uni
         onClick = onClick, modifier = Modifier.height(36.dp), shape = RoundedCornerShape(18.dp),
         border = BorderStroke(1.dp, if (hell) Weiss else Linie),
         colors = ButtonDefaults.outlinedButtonColors(contentColor = if (hell) Weiss else Grau),
-    ) { Text(text, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+        // weniger Innenrand als üblich (24 dp), sonst passen drei Knöpfe nicht in eine Zeile und „IRGENDWANN“ verschwindet
+        contentPadding = PaddingValues(horizontal = 12.dp),
+    ) { Text(text, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, softWrap = false) }
 }
 
 @Composable
@@ -232,6 +235,7 @@ internal fun AufgabeZeile(a: Aufgabe, abhaken: () -> Unit, oeffnen: () -> Unit) 
                 }
                 val zusatz = listOfNotNull(
                     a.heuteSeitFrueher()?.let { Koerbe.seitText(it) },
+                    "ab morgen wieder in Heute".takeIf { a.zurueckAm?.let { it > System.currentTimeMillis() } == true },
                     a.frist?.let { Koerbe.fristText(it) },
                     a.schritte.takeIf { it.isNotEmpty() }?.let { s -> "${s.count { it.erledigt }}/${s.size} Schritte" },
                     "unklar, wer".takeIf { a.unklarWer },

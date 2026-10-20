@@ -20,7 +20,16 @@ object GlyphLicht {
     private var bereit = false
 
     fun verbinden(context: Context) {
-        if (manager != null) return
+        manager?.let { m ->
+            // Nothing beendet die Sitzung manchmal ohne Rückmeldung („GlyphService: session is null“ im logcat,
+            // gesehen am 20.10.2026 beim Fokus-Timer). Darum bei jedem Start neu öffnen.
+            try {
+                m.openSession()
+                bereit = true
+            } catch (_: Exception) {
+            }
+            return
+        }
         try {
             if (!Common.is24111()) return // nur Phone (3a) / (3a) Pro
             val m = GlyphManager.getInstance(context.applicationContext)
