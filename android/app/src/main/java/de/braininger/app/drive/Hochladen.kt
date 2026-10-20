@@ -153,6 +153,10 @@ class HochladenAuftrag(context: Context, params: WorkerParameters) : CoroutineWo
                     }
                     stand.abgeschlossen = true
                     stand.speichern(a.ordner)
+                    // am Handy schon fertig ausgewertet? Dann das Ergebnis jetzt gleich ins Drive
+                    if (de.braininger.app.erkennung.HandyAuswertung.amHandy(a.ordner)) {
+                        de.braininger.app.erkennung.HandyAuswertung.claudeAnstossen(ctx)
+                    }
                 }
             }
             anmeldungFehltSetzen(ctx, false)

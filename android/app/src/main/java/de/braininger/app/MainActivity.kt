@@ -310,6 +310,19 @@ private fun Startseite(aktualisierung: Int, startReiter: String?, reiterGelesen:
                         zurStartseite()
                         rueckgaengigHinweis.value = Rueckgaengig("Wieder vorne") { Ordnung.archivieren(context, listOf(id)) }
                     })
+                    val e = ergebnisse[id]
+                    if (e?.status == "fertig" && e.quelle == "handy") add("NEU AUSWERTEN (LAPTOP)" to {
+                        scope.launch {
+                            val meldung = try {
+                                Auftraege.neuAuswerten(context, offeneAufnahme.ordner)
+                                ergebnisseHolen()
+                                "An den Laptop geschickt. Die neuen Notizen kommen, sobald er läuft."
+                            } catch (ex: Exception) {
+                                "Neu auswerten ging gerade nicht: ${ex.message}"
+                            }
+                            android.widget.Toast.makeText(context, meldung, android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    })
                     add("LÖSCHEN" to {
                         Ordnung.loeschen(context, listOf(id))
                         zurueckZurListe()

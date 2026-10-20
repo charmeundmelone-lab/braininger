@@ -161,6 +161,8 @@ object Kalender {
             val e = ergebnis.optJSONObject(i) ?: continue
             offen.getOrNull(e.optInt("nummer", -1))?.let { claude.put(it.muster, e.optBoolean("betrifft", true)) }
         }
+        // was Claude ausgelassen hat, gilt als „betrifft mich“ (im Zweifel erinnern), damit es nicht jedes Mal neu gefragt wird
+        for (t in offen) if (!claude.has(t.muster)) claude.put(t.muster, true)
         schreibenMap(context, "claude", claude)
     }
 }

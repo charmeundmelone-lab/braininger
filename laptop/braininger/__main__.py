@@ -78,9 +78,11 @@ def durchgang() -> int:
     anzahl = 0
     for a in bereite_aufnahmen():
         b = Bearbeitung(a)
+        if a.auswertung == "handy" and handy.ganz_an_laptop(a, b.lokal):
+            a.auswertung = "laptop"  # Handy konnte den Text nicht erkennen: ganz normal am Laptop bearbeiten
         if a.auswertung == "handy" and b.zustand.status not in ("fertig", "fehler"):
             # Die App wertet selbst aus: nur übernehmen, oder die Notizen schreiben, wenn sie darum bittet
-            if b.zustand.status != "text_fertig":
+            if b.zustand.status not in ("text_fertig", "wartet"):  # schon übernommen, nur noch Claude am Laptop
                 schritt = handy.vorbereiten(a, b.lokal)
                 if schritt is None:
                     continue

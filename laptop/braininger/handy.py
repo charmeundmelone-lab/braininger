@@ -47,6 +47,19 @@ def _text_sichern(lokal: Path, daten: dict) -> Text:
     return text
 
 
+def ganz_an_laptop(a: Aufnahme, lokal: Path) -> bool:
+    """Die Spracherkennung am Handy ging nicht: der Laptop macht die Aufnahme ganz (Text aus dem Audio im Drive).
+    Die Entscheidung wird lokal gemerkt, weil der Laptop die ergebnis.json danach selbst überschreibt."""
+    merker = lokal / "laptop_ganz.txt"
+    if merker.exists():
+        return True
+    d = _drive_ergebnis(a)
+    if d and d.get("auswertung") == "laptop_ganz":
+        ergebnis.lokal_schreiben(merker, "Spracherkennung am Handy fehlgeschlagen, Laptop übernimmt.\n")
+        return True
+    return False
+
+
 def vorbereiten(a: Aufnahme, lokal: Path) -> str | None:
     """Rückgabe: "fertig" (Handy-Ergebnis übernommen), "laptop" (Text übernommen, der Laptop soll die Notizen
     schreiben) oder None (die App arbeitet noch)."""

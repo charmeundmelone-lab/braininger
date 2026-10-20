@@ -173,7 +173,12 @@ object HandyAuswertung {
             var laenge = 0
             var bis = erledigt
             while (bis < stuecke.size && laenge < GRUPPE_S * AudioDekoder.ZIELRATE) {
-                val werte = AudioDekoder.dekodieren(stuecke[bis])
+                // ein beschädigtes Stück (z. B. das letzte nach einem Absturz) wird übersprungen, wie am Laptop
+                val werte = try {
+                    AudioDekoder.dekodieren(stuecke[bis])
+                } catch (e: Exception) {
+                    FloatArray(0)
+                }
                 puffer += werte
                 laenge += werte.size
                 bis++
@@ -307,6 +312,21 @@ object HandyAuswertung {
         }
     }
 
+    /** Fehlversuche der Erkennung zählen; nach dem zweiten macht der Laptop alles (er erkennt den Text selbst). */
+    fun erkennungFehlgeschlagen(a: Aufnahme, meldung: String) {
+        val j = try { JSONObject(zustandDatei(a.ordner).readText()) } catch (_: Exception) { JSONObject() }
+        val versuche = j.optInt("fehler", 0) + 1
+        if (versuche < 2) {
+            j.put("phase", phase(a.ordner) ?: "text").put("fehler", versuche).put("meldung", meldung)
+            zustandDatei(a.ordner).writeText(j.toString(1))
+            return
+        }
+        ergebnisSchreiben(a.ordner, JSONObject().put("version", 1).put("id", a.ordner.name).put("status", "hochgeladen")
+            .put("auswertung", "laptop_ganz").put("text_fertig", false).put("quelle", "handy")
+            .put("meldung", "Die Spracherkennung am Handy ging nicht ($meldung). Der Laptop übernimmt."))
+        phaseSetzen(a.ordner, "laptop_hochladen", meldung)
+    }
+
     /** Claude ging am Handy nicht: Text bleibt, der Laptop soll die Notizen schreiben (ergebnis.json „laptop_bitte“). */
     private fun anLaptop(a: Aufnahme, text: JSONObject, meldung: String) {
         ergebnisSchreiben(a.ordner, basis(a, text).put("status", "hochgeladen").put("auswertung", "laptop_bitte").put("meldung", meldung))
@@ -415,8 +435,9 @@ class ErkennungAuftrag(context: Context, params: WorkerParameters) : CoroutineWo
                 throw e
             } catch (_: ErkennungAbgebrochen) {
                 return Result.retry()
-            } catch (_: IOException) {
-                return Result.retry()
+            } catch (e: Exception) {
+                HandyAuswertung.erkennungFehlgeschlagen(a, e.message ?: e.javaClass.simpleName)
+                continue
             }
             HandyAuswertung.claudeAnstossen(ctx)
         }

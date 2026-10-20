@@ -177,6 +177,10 @@ object Auftraege {
     suspend fun vorlageAendern(context: Context, ordner: File, notiz: Int, vorlage: String) =
         senden(context, ordner, JSONObject().put("art", "vorlage_aendern").put("notiz", notiz).put("vorlage", vorlage))
 
+    /** Knopf „Neu auswerten“ (Grill 20.10.2026, Frage 45/63): Claude am Laptop schreibt die Notizen neu, gratis. */
+    suspend fun neuAuswerten(context: Context, ordner: File) =
+        senden(context, ordner, JSONObject().put("art", "neu_auswerten"))
+
     /** name leer = Name entfernen. */
     suspend fun sprecherBenennen(context: Context, ordner: File, kennung: String, name: String) =
         senden(context, ordner, JSONObject().put("art", "sprecher_benennen").put("kennung", kennung).put("name", name.trim()))
