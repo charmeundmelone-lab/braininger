@@ -62,7 +62,9 @@ import java.util.concurrent.TimeUnit
  */
 object HandyAuswertung {
     const val AKKU_GRENZE = 30 // Prozent (Frage 55): darunter wartet die Erkennung aufs Laden
-    private const val GRUPPE_S = 20 * 60 // so viel Audio auf einmal an Whisper (Speicher)
+    // so viel Audio auf einmal an Whisper. Klein genug, dass ein Stück in unter 10 min fertig ist: Läuft der Auftrag
+    // ausnahmsweise ohne Vordergrund, beendet Android ihn nach 10 min, und der Zwischenstand bleibt trotzdem.
+    private const val GRUPPE_S = 5 * 60
     private const val ID_ARBEIT = 21
     private const val ID_DECKEL = 22
 
@@ -151,7 +153,7 @@ object HandyAuswertung {
     fun textVorhanden(ordner: File) = textDatei(ordner).exists()
 
     /**
-     * Erkennt den Text aller Stücke einer Aufnahme. Je Gruppe (bis 20 min) wird das Zwischenergebnis gesichert,
+     * Erkennt den Text aller Stücke einer Aufnahme. Je Gruppe (ca. 5 min Ton) wird das Zwischenergebnis gesichert,
      * damit ein Abbruch (neue Aufnahme, Akku, Android beendet den Auftrag) nicht von vorn anfängt.
      */
     suspend fun textErkennen(context: Context, a: Aufnahme, fortschritt: (Int) -> Unit) {
