@@ -11,28 +11,28 @@ permissions:
 jobs:
   bauen:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 50
     steps:
       - name: whisper.cpp v1.9.5 holen
         run: git clone --depth 1 --branch v1.9.5 https://github.com/ggml-org/whisper.cpp.git
 
-      - name: Für Android arm64 bauen (CPU, Snapdragon 7s Gen 3 = ARMv9 mit dotprod/i8mm/fp16)
+      - name: Werkzeuge für die Vulkan-Variante (glslc, Vulkan-Header)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq glslc libvulkan-dev
+
+      - name: Für Android arm64 bauen (CPU mit dotprod/i8mm/fp16 und Vulkan für die Adreno-GPU)
         run: |
           cd whisper.cpp
-          for v in neon basis; do
-            if [ "$v" = neon ]; then ARCH="-DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod+i8mm+fp16"; else ARCH=""; fi
-            cmake -B build-$v \
-              -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake \
-              -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-33 \
-              -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
-              -DGGML_NATIVE=OFF -DGGML_OPENMP=OFF $ARCH \
-              -DWHISPER_BUILD_EXAMPLES=ON -DWHISPER_BUILD_TESTS=OFF -DWHISPER_SDL2=OFF
-            cmake --build build-$v -j4 --target whisper-cli whisper-bench
-            mkdir -p ../aus/$v
-            cp build-$v/bin/whisper-cli build-$v/bin/whisper-bench ../aus/$v/
-          done
+          COMMON="-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_LATEST_HOME/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-33 -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DGGML_NATIVE=OFF -DGGML_OPENMP=OFF -DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod+i8mm+fp16 -DWHISPER_BUILD_EXAMPLES=ON -DWHISPER_BUILD_TESTS=OFF -DWHISPER_SDL2=OFF"
+          cmake -B build-neon $COMMON
+          cmake --build build-neon -j4 --target whisper-cli whisper-bench
+          mkdir -p ../aus/neon && cp build-neon/bin/whisper-cli build-neon/bin/whisper-bench ../aus/neon/
+          if cmake -B build-vulkan $COMMON -DGGML_VULKAN=ON -DVulkan_GLSLC_EXECUTABLE=$(which glslc) && cmake --build build-vulkan -j4 --target whisper-cli whisper-bench; then
+            mkdir -p ../aus/vulkan && cp build-vulkan/bin/whisper-cli build-vulkan/bin/whisper-bench ../aus/vulkan/
+          else
+            echo "::warning::Vulkan-Bau fehlgeschlagen"
+          fi
           cp LICENSE ../aus/LICENSE-whisper.cpp
-          file ../aus/*/whisper-cli
+          ls -R ../aus
 
       - uses: actions/upload-artifact@v4
         with:
