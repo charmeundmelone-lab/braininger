@@ -15,7 +15,7 @@ from pathlib import Path
 
 from . import aufnahme as aufnahme_modul
 from . import einstellungen as E
-from . import aufgaben, fragen, notizdateien, ordnung, tagesuebersicht, woerterbuch
+from . import aufgaben, fragen, handy, notizdateien, ordnung, tagesuebersicht, woerterbuch
 from .claude_aufruf import schluessel_vorhanden
 from .verarbeitung import Bearbeitung, drive_nachtragen
 
@@ -78,6 +78,25 @@ def durchgang() -> int:
     anzahl = 0
     for a in bereite_aufnahmen():
         b = Bearbeitung(a)
+        if a.auswertung == "handy" and b.zustand.status not in ("fertig", "fehler"):
+            # Die App wertet selbst aus: nur übernehmen, oder die Notizen schreiben, wenn sie darum bittet
+            if b.zustand.status != "text_fertig":
+                schritt = handy.vorbereiten(a, b.lokal)
+                if schritt is None:
+                    continue
+                b = Bearbeitung(a)  # neu laden: ergebnis.json und text.json liegen jetzt lokal
+                if schritt == "fertig":
+                    b.zustand.status, b.zustand.drive_aktuell = "fertig", True
+                    b.zustand.speichern(b.lokal)
+                    continue
+                b.zustand.status = "text_fertig"
+                b.zustand.speichern(b.lokal)
+            if not b.zustand.bereit():
+                continue
+            log.info("%s: Notizen für das Handy schreiben (Text vom Handy)", a.id)
+            b.ausfuehren()
+            anzahl += 1
+            continue
         if b.zustand.status == "fertig":
             auftrag = b.offener_auftrag()
             if auftrag:

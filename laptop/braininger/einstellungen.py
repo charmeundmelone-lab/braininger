@@ -38,3 +38,7 @@ PAUSE_AB_S = 30  # längere Stille: Aufnahme dort teilen und im Text als [Pause 
 PRUEFABSTAND_S = 30  # wie oft der Eingang angeschaut wird
 SYNC_GEDULD_S = 30 * 60  # so lange auf fehlende Stücke warten, bevor ohne sie gearbeitet wird
 WARNGRENZE_FREI_GB = 10
+
+# Grill 20.10.2026 (Frage 62): Der Laptop beantwortet nur noch Fragen und wertet auf Wunsch neu aus.
+# Notizdateien, Tagesübersicht-Dateien und Aufgaben.md auf dem Desktop entfallen. True schaltet sie wieder ein.
+DATEIEN_AM_DESKTOP = False

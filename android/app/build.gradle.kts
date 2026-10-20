@@ -12,7 +12,12 @@ android {
     namespace = "de.braininger.app"
     compileSdk = 35
     // Spracherkennung (whisper.cpp) wird mit dem NDK übersetzt; auf GitHub liegt es unter ANDROID_NDK_LATEST_HOME
-    System.getenv("ANDROID_NDK_LATEST_HOME")?.let { ndkPath = it }
+    System.getenv("ANDROID_NDK_LATEST_HOME")?.let { pfad ->
+        ndkPath = pfad
+        // ndkVersion muss zur Version unter ndkPath passen (steht in source.properties)
+        file("$pfad/source.properties").takeIf { it.exists() }?.readLines()
+            ?.firstOrNull { it.startsWith("Pkg.Revision") }?.substringAfter("=")?.trim()?.let { ndkVersion = it }
+    }
 
     defaultConfig {
         applicationId = "de.braininger.app"

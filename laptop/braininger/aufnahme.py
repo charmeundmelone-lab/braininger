@@ -25,6 +25,7 @@ class Aufnahme:
     app_version: str = ""
     markierungen: list[float] = field(default_factory=list)  # Markier-Knopf, Sekunden ab Beginn
     fotos: list[tuple[str, float]] = field(default_factory=list)  # Foto-Knopf: (Datei, Sekunde)
+    auswertung: str = "laptop"  # "handy": Text und Notizen macht die App selbst (ab Grill 20.10.2026)
 
     @property
     def abgeschlossen(self) -> bool:
@@ -67,6 +68,7 @@ def lesen(ordner: Path) -> Aufnahme | None:
         markierungen=[float(m) for m in j.get("markierungen") or [] if isinstance(m, (int, float))],
         fotos=[(str(f["datei"]), float(f.get("zeit_s") or 0)) for f in j.get("fotos") or []
                if isinstance(f, dict) and re.fullmatch(r"foto_[\w.]+\.jpg", str(f.get("datei", "")))],
+        auswertung=j.get("auswertung") or "laptop",
     )
 
 

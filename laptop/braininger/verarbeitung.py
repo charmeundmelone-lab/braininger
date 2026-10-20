@@ -288,6 +288,19 @@ class Bearbeitung:
                 self._notizen_ablegen(self.daten["notizen"])
             elif art == "sprecher_benennen":
                 self._sprecher_benennen(text, nummer, str(auftrag.get("kennung", "")), str(auftrag.get("name") or ""))
+            elif art == "neu_auswerten":
+                # Knopf „Neu auswerten“ in der App (Grill 20.10.2026): Claude am Laptop schreibt die Notizen neu,
+                # mit dem vorhandenen Text (das Audio ist nach 3 Tagen ohnehin gelöscht)
+                self.daten.update(status="in_arbeit", schritt="auswertung", fortschritt=0.0)
+                self.speichern()
+                log.info("%s: Auftrag %d, neu auswerten", self.a.id, nummer)
+                dauer = self.daten.get("dauer_audio_s") or float(self.a.dauer_s or 0)
+                antwort = auswertung.auswerten(text, self.a.modus, self.a.start, dauer, self.daten.get("hinweise", []),
+                                               namen, self.a.markierungen, *self._fotos(), aufgaben.offene())
+                self._notizen_ablegen(antwort["notizen"])
+                self.daten.update(kurz=antwort["kurz"], notizen=antwort["notizen"], wichtig=antwort.get("wichtig", []),
+                                  aufgaben=antwort["aufgaben"], vorlage_hinweis=antwort["vorlage_hinweis"],
+                                  quelle="laptop")
             else:
                 raise ValueError(f"Unbekannter Auftrag {art!r}")
         except ClaudeLimitErreicht as e:

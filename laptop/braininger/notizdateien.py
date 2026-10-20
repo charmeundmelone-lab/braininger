@@ -60,6 +60,8 @@ def _fotos_kopieren(inhalt: str, aufnahme_id: str, ordner: Path, foto_ordner: Pa
 def ablegen(aufnahme_id: str, modus: str, notizen: list[dict], lokal: Path,
             foto_ordner: Path | None = None) -> list[Path]:
     """Schreibt alle Notizen einer Aufnahme (samt Fotos) und ersetzt ihre früheren Dateien."""
+    if not E.DATEIEN_AM_DESKTOP:
+        return []
     zeit = zeit_aus_id(aufnahme_id)
     ordner = E.NOTIZEN / f"{zeit:%Y-%m}"
     for alt in _liste_lesen(lokal):
@@ -98,6 +100,9 @@ def ablegen(aufnahme_id: str, modus: str, notizen: list[dict], lokal: Path,
 def uebersicht_ablegen(tag: str, titel: str, inhalt: str) -> Path:
     """Tagesübersicht eines Tages (JJJJ-MM-TT). Wird bei jeder neuen Fassung überschrieben."""
     datei = E.NOTIZEN / tag[:7] / f"{tag} Tagesübersicht.md"
+    if not E.DATEIEN_AM_DESKTOP:
+        return datei
+    datei = E.NOTIZEN / tag[:7] / f"{tag} Tagesübersicht.md"
     kopf = f"---\ndatum: {tag}\nvorlage: Tagesübersicht\n---\n\n# {titel}\n\n"
     ergebnis.lokal_schreiben(datei, kopf + inhalt.strip() + "\n")
     return datei
@@ -105,6 +110,8 @@ def uebersicht_ablegen(tag: str, titel: str, inhalt: str) -> Path:
 
 def nachholen() -> int:
     """Legt Dateien für fertige Aufnahmen an, die noch keine haben (z. B. aus der Zeit vor dieser Funktion)."""
+    if not E.DATEIEN_AM_DESKTOP:
+        return 0
     anzahl = 0
     try:
         ordner = sorted(p for p in E.AUFNAHMEN_LOKAL.iterdir() if p.is_dir())

@@ -41,6 +41,8 @@ def _frist_text(frist: str) -> str:
 
 def ansicht_schreiben() -> None:
     """Schreibt Aufgaben.md neu, sobald sich die Liste im Drive geändert hat."""
+    if not E.DATEIEN_AM_DESKTOP:
+        return
     global _zuletzt
     try:
         stand = DATEI.stat().st_mtime
