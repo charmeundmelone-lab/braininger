@@ -80,6 +80,7 @@ class AufnahmeDienst : Service() {
     private var modus = Modus.GEDANKE
     private var start = 0L
     private var auswertung = "laptop" // handy, sobald ein Claude-Schlüssel eingetragen ist
+    private var bluetoothAktiv = false // Bluetooth-Kopfhörer laufen für diese Aufnahme im Gesprächsmodus
     private val stuecke = mutableListOf<String>()
     private val hinweise = mutableListOf<String>()
     private val markierungen = mutableListOf<Long>() // Sekunden ab Aufnahmebeginn
@@ -140,12 +141,18 @@ class AufnahmeDienst : Service() {
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Braininger:Aufnahme")
             .apply { acquire(12 * 60 * 60 * 1000L) }
 
-        val geraet = MikroWahl.bestes(this)
+        // Lavalier vor Bluetooth-Kopfhörern vor eingebautem Mikrofon
+        var geraet = MikroWahl.bestes(this)
+        bluetoothAktiv = false
+        if (geraet == null && MikroWahl.bluetoothDa(this) && MikroWahl.bluetoothAn(this)) {
+            bluetoothAktiv = true
+            geraet = MikroWahl.bluetoothEingang(this) // kann erst kurz nach dem Umschalten erscheinen, siehe mikrofonPruefen
+        }
         val o = Ablage.neueAufnahme(this, modus, start)
         ordner = o
         // erst jetzt kennt die Benachrichtigung den Ordner für den Foto-Knopf
         getSystemService(NotificationManager::class.java).notify(ID_AUFNAHME, benachrichtigung())
-        if (!MikroWahl.istExtern(geraet)) {
+        if (!MikroWahl.istExtern(geraet) && !bluetoothAktiv) {
             hinweise += "Kein Lavalier gefunden, Aufnahme mit dem eingebauten Mikrofon."
             hinweisZeigen("Kein Lavalier-Mikrofon", "Braininger nimmt mit dem eingebauten Mikrofon auf.")
         }
@@ -153,6 +160,8 @@ class AufnahmeDienst : Service() {
         recorder = StueckRecorder(
             ordner = o,
             geraet = geraet,
+            quelle = if (bluetoothAktiv) android.media.MediaRecorder.AudioSource.VOICE_COMMUNICATION
+                     else android.media.MediaRecorder.AudioSource.MIC,
             beiStueckFertig = { datei -> haupt.post { stueckFertig(datei) } },
             beiFehler = { text -> haupt.post { fehler(text) } },
         ).also { it.start() }
@@ -161,8 +170,9 @@ class AufnahmeDienst : Service() {
         AufnahmeStatus.setzen(
             AufnahmeZustand(
                 laeuft = true, modus = modus, start = start,
-                mikrofon = MikroWahl.name(geraet), mikrofonExtern = MikroWahl.istExtern(geraet),
-                warnung = if (MikroWahl.istExtern(geraet)) null else "Eingebautes Mikrofon",
+                mikrofon = if (bluetoothAktiv && geraet == null) "Bluetooth-Kopfhörer" else MikroWahl.name(geraet),
+                mikrofonExtern = MikroWahl.istExtern(geraet) || bluetoothAktiv,
+                warnung = if (MikroWahl.istExtern(geraet) || bluetoothAktiv) null else "Eingebautes Mikrofon",
                 ordner = o.absolutePath,
             )
         )
@@ -194,18 +204,32 @@ class AufnahmeDienst : Service() {
 
     private fun mikrofonPruefen() {
         val r = recorder ?: return
-        val bestes = MikroWahl.bestes(this)
+        var bestes = MikroWahl.bestes(this)
+        if (bestes != null && bluetoothAktiv) {
+            // Lavalier eingesteckt: hat Vorrang, Bluetooth-Gesprächsmodus beenden
+            MikroWahl.bluetoothAus(this)
+            bluetoothAktiv = false
+        }
+        if (bestes == null && bluetoothAktiv) {
+            bestes = MikroWahl.bluetoothEingang(this)
+            if (bestes == null && !MikroWahl.bluetoothDa(this)) {
+                // Kopfhörer getrennt (aus, außer Reichweite, Akku leer)
+                MikroWahl.bluetoothAus(this)
+                bluetoothAktiv = false
+            }
+        }
         r.bevorzugtesGeraet(bestes)
-        val extern = MikroWahl.istExtern(bestes)
+        val extern = MikroWahl.istExtern(bestes) || bluetoothAktiv
         val vorher = AufnahmeStatus.zustand.value.mikrofonExtern
         if (vorher && !extern) {
             val sek = (System.currentTimeMillis() - start) / 1000
-            hinweise += "Lavalier getrennt nach %d:%02d min, weiter mit eingebautem Mikrofon.".format(sek / 60, sek % 60)
-            hinweisZeigen("Lavalier getrennt", "Die Aufnahme läuft mit dem eingebauten Mikrofon weiter.")
+            hinweise += "Externes Mikrofon getrennt nach %d:%02d min, weiter mit eingebautem Mikrofon.".format(sek / 60, sek % 60)
+            hinweisZeigen("Mikrofon getrennt", "Die Aufnahme läuft mit dem eingebauten Mikrofon weiter.")
         }
         AufnahmeStatus.aendern {
             it.copy(
-                mikrofon = MikroWahl.name(bestes), mikrofonExtern = extern,
+                mikrofon = if (bluetoothAktiv && bestes == null) "Bluetooth-Kopfhörer" else MikroWahl.name(bestes),
+                mikrofonExtern = extern,
                 warnung = if (extern) null else "Eingebautes Mikrofon",
             )
         }
@@ -225,6 +249,10 @@ class AufnahmeDienst : Service() {
         }
         recorder = null
         audio.unregisterAudioDeviceCallback(geraeteBeobachter)
+        if (bluetoothAktiv) {
+            MikroWahl.bluetoothAus(this) // Kopfhörer wieder normal (Musik)
+            bluetoothAktiv = false
+        }
         GlyphLicht.ende()
         // Das Abschließen des letzten Stücks dauert kurz, deshalb nicht im Hauptfaden.
         Thread {
@@ -316,6 +344,10 @@ class AufnahmeDienst : Service() {
         // Falls Android den Dienst beendet, das offene Stück noch retten.
         recorder?.stopp()
         recorder = null
+        if (bluetoothAktiv) {
+            MikroWahl.bluetoothAus(this)
+            bluetoothAktiv = false
+        }
         weckSperre?.let { if (it.isHeld) it.release() }
         AufnahmeStatus.setzen(AufnahmeZustand(laeuft = false))
         BrainingerWidget.aktualisieren(this)

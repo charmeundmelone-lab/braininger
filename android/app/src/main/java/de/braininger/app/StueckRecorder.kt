@@ -23,6 +23,8 @@ import java.util.Locale
 class StueckRecorder(
     private val ordner: File,
     private val geraet: AudioDeviceInfo?,
+    /** MIC (Lavalier, eingebaut) oder VOICE_COMMUNICATION (Bluetooth-Kopfhörer im Gesprächsmodus). */
+    private val quelle: Int = MediaRecorder.AudioSource.MIC,
     private val stueckDauerUs: Long = 5L * 60 * 1_000_000,
     private val beiStueckFertig: (File) -> Unit,
     private val beiFehler: (String) -> Unit,
@@ -69,7 +71,7 @@ class StueckRecorder(
         )
         val rec = try {
             AudioRecord(
-                MediaRecorder.AudioSource.MIC, ABTASTRATE,
+                quelle, ABTASTRATE,
                 AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT,
                 maxOf(minPuffer * 4, ABTASTRATE) // mindestens eine halbe Sekunde Puffer
             )
