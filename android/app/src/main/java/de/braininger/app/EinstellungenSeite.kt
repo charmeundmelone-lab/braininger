@@ -57,6 +57,8 @@ fun EinstellungenSeite(zurueck: () -> Unit) {
     var name by remember { mutableStateOf(Einstellungen.name(context)) }
     var beschreibung by remember { mutableStateOf(Einstellungen.beschreibung(context)) }
     var gespeichert by remember { mutableStateOf<String?>(null) }
+    var angabenGespeichert by remember { mutableStateOf<String?>(null) }
+    var neuerSchluessel by remember { mutableStateOf(false) }
     val kalenderAnfrage = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         stand++
         if (it) Tagesrhythmus.planen(context)
@@ -88,10 +90,17 @@ fun EinstellungenSeite(zurueck: () -> Unit) {
         Ueberschrift("CLAUDE AM HANDY")
         val anzeige = Schluessel.anzeige(context)
         Text(
-            if (anzeige != null) "Schlüssel eingetragen ($anzeige). Neue Aufnahmen wertet das Handy selbst aus."
+            if (anzeige != null) "Schlüssel eingetragen ✓ ($anzeige). Neue Aufnahmen wertet das Handy selbst aus."
             else "Kein Schlüssel. Ohne Schlüssel wertet weiter der Laptop aus.",
-            color = Grau, fontSize = 13.sp,
+            color = if (anzeige != null) Weiss else Grau, fontSize = 14.sp,
         )
+        if (anzeige != null && !neuerSchluessel) {
+            Row(Modifier.padding(top = 6.dp)) {
+                KleinerKnopf("ANDEREN SCHLÜSSEL", hell = false) { neuerSchluessel = true }
+                Spacer(Modifier.padding(4.dp))
+                KleinerKnopf("ENTFERNEN", hell = false) { Schluessel.loeschen(context); gespeichert = "Schlüssel entfernt."; stand++ }
+            }
+        } else {
         OutlinedTextField(
             value = schluesselEingabe, onValueChange = { schluesselEingabe = it.trim().take(300) }, singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
@@ -103,15 +112,13 @@ fun EinstellungenSeite(zurueck: () -> Unit) {
                 if (schluesselEingabe.startsWith("sk-ant-")) {
                     Schluessel.speichern(context, schluesselEingabe)
                     schluesselEingabe = ""
+                    neuerSchluessel = false
                     gespeichert = "Schlüssel gespeichert."
                     Modelle.laden(context) // Spracherkennung schon mal herunterladen (nur WLAN)
                     stand++
                 } else gespeichert = "Das sieht nicht wie ein Claude-Schlüssel aus (beginnt mit sk-ant-)."
             }
-            if (anzeige != null) {
-                Spacer(Modifier.padding(4.dp))
-                KleinerKnopf("ENTFERNEN", hell = false) { Schluessel.loeschen(context); gespeichert = "Schlüssel entfernt."; stand++ }
-            }
+        }
         }
         gespeichert?.let { Text(it, color = Grau, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp)) }
         Text(
@@ -145,8 +152,9 @@ fun EinstellungenSeite(zurueck: () -> Unit) {
         OutlinedTextField(beschreibung, { beschreibung = it.take(160) }, colors = feld,
             placeholder = { Text("z. B. Musiker und Familienvater", color = Grau) }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
         Row(Modifier.padding(top = 6.dp)) {
-            KleinerKnopf("ÜBERNEHMEN") { Einstellungen.speichern(context, name, beschreibung); gespeichert = "Angaben gespeichert." }
+            KleinerKnopf("ÜBERNEHMEN") { Einstellungen.speichern(context, name, beschreibung); angabenGespeichert = "Gespeichert ✓" }
         }
+        angabenGespeichert?.let { Text(it, color = Weiss, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }
         Spacer(Modifier.height(24.dp))
 
         // --- Kalender ---
