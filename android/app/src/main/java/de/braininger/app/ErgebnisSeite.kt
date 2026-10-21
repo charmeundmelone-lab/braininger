@@ -41,6 +41,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import de.braininger.app.claude.DeckelErreicht
 import de.braininger.app.drive.AnmeldungNoetig
 import de.braininger.app.drive.Auftraege
 import de.braininger.app.drive.Ergebnis
@@ -56,10 +57,10 @@ import de.braininger.app.ui.Weiss
 import kotlinx.coroutines.launch
 import java.util.Locale
 
-/** Notizen und Text einer Aufnahme. Vorlage einer Notiz per Tipp ändern, Sprechern Namen geben. */
+/** Notizen und Text einer Aufnahme. Vorlage einer Notiz per Tipp ändern, Sprechern Namen geben, Notizen korrigieren. */
 @Composable
 fun ErgebnisSeite(
-    aufnahme: Aufnahme, ergebnis: Ergebnis?, aktualisierung: Int,
+    aufnahme: Aufnahme, ergebnisVomAbruf: Ergebnis?, aktualisierung: Int,
     knoepfe: List<Pair<String, () -> Unit>> = emptyList(), zurueck: () -> Unit,
 ) {
     BackHandler(onBack = zurueck)
@@ -69,6 +70,11 @@ fun ErgebnisSeite(
     var vorlageWahl by remember { mutableStateOf<Int?>(null) }
     var sprecherWahl by remember { mutableStateOf<SprecherInfo?>(null) }
     var meldung by remember { mutableStateOf<String?>(null) }
+    var korrekturOffen by remember { mutableStateOf(false) }
+    var korrekturLaeuft by remember { mutableStateOf(false) }
+    // nach einer Korrektur gleich die neue Fassung zeigen, bis die Liste sie beim nächsten Prüfen selbst hat
+    var korrigiert by remember(ergebnisVomAbruf) { mutableStateOf<Ergebnis?>(null) }
+    val ergebnis = korrigiert ?: ergebnisVomAbruf
     val offenerAuftrag = remember(aktualisierung, ergebnis) { Auftraege.offen(aufnahme.ordner) }
 
     Column(
@@ -104,6 +110,9 @@ fun ErgebnisSeite(
         if (offenerAuftrag != null) {
             Text("Laptop schreibt die Notizen neu …", color = Grau, fontSize = 13.sp)
         }
+        if (korrekturLaeuft) {
+            Text("Claude korrigiert die Notizen …", color = Grau, fontSize = 13.sp)
+        }
         meldung?.let { Text(it, color = Rot, fontSize = 13.sp) }
 
         if (ergebnis != null && ergebnis.endgueltig && ergebnis.sprecherDetails.isNotEmpty()) {
@@ -118,10 +127,17 @@ fun ErgebnisSeite(
         }
 
         if (ergebnis != null && (ergebnis.notizen.isNotEmpty() || ergebnis.abschnitte.isNotEmpty())) {
-            Row(Modifier.padding(vertical = 8.dp)) {
+            Row(Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Reiter("NOTIZEN", !zeigeText) { zeigeText = false }
                 Spacer(Modifier.width(8.dp))
                 Reiter("TEXT", zeigeText) { zeigeText = true }
+                Spacer(Modifier.weight(1f))
+                if (ergebnis.status == "fertig" && ergebnis.notizen.isNotEmpty() && offenerAuftrag == null && !korrekturLaeuft) {
+                    Text(
+                        "KORRIGIEREN", color = Weiss, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clickable { meldung = null; korrekturOffen = true }.padding(6.dp),
+                    )
+                }
             }
             LazyColumn(Modifier.weight(1f)) {
                 val hinweis = ergebnis.vorlageHinweis
@@ -175,6 +191,27 @@ fun ErgebnisSeite(
                     }
                 }
                 item { Spacer(Modifier.height(24.dp)) }
+            }
+        }
+    }
+
+    if (korrekturOffen) {
+        KorrekturDialog(schliessen = { korrekturOffen = false }) { text ->
+            korrekturOffen = false
+            korrekturLaeuft = true
+            scope.launch {
+                try {
+                    Korrektur.ausfuehren(context, aufnahme, text)
+                    korrigiert = Ergebnis.lesen(aufnahme.ordner)
+                } catch (e: AnmeldungNoetig) {
+                    meldung = "Erst bei Google anmelden."
+                } catch (e: DeckelErreicht) {
+                    meldung = "Der Claude-Deckel für diesen Monat ist erreicht."
+                } catch (e: Exception) {
+                    meldung = "Korrektur ging nicht: ${e.message}"
+                } finally {
+                    korrekturLaeuft = false
+                }
             }
         }
     }
@@ -249,6 +286,38 @@ private fun SprecherChip(s: SprecherInfo, aktiv: Boolean, onClick: () -> Unit) {
         Text(if (s.vermutet) "an der Stimme erkannt · ${s.sprechzeitS} s" else "${s.sprechzeitS} s",
              color = Grau, fontSize = 10.sp)
     }
+}
+
+/** In eigenen Worten sagen, was falsch ist. Sprechen geht über das Mikrofon der Tastatur. */
+@Composable
+private fun KorrekturDialog(schliessen: () -> Unit, korrigieren: (String) -> Unit) {
+    var text by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = schliessen,
+        title = { Text("Was ist falsch?") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = text, onValueChange = { text = it.take(1000) }, minLines = 3,
+                    placeholder = { Text("z. B. Das war Lasse, nicht Naira.", color = Grau) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = Weiss, unfocusedTextColor = Weiss,
+                        focusedBorderColor = Weiss, unfocusedBorderColor = Linie, cursorColor = Weiss,
+                    ),
+                )
+                Spacer(Modifier.height(8.dp))
+                Text("Claude schreibt die Notizen damit neu und ändert nur, was du nennst. Zum Sprechen das Mikrofon auf der Tastatur antippen.",
+                     color = Grau, fontSize = 12.sp)
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = text.isNotBlank(), onClick = { korrigieren(text) }) {
+                Text("KORRIGIEREN", color = if (text.isNotBlank()) Weiss else Grau, fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = { TextButton(onClick = schliessen) { Text("Abbrechen") } },
+        containerColor = androidx.compose.ui.graphics.Color(0xFF111111),
+    )
 }
 
 /** Name eingeben oder einen bekannten antippen. Leer speichern = Name entfernen. */

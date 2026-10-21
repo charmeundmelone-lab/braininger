@@ -100,6 +100,8 @@ def durchgang() -> int:
             anzahl += 1
             continue
         if b.zustand.status == "fertig":
+            if handy.nachziehen(a, b.lokal):
+                b = Bearbeitung(a)  # neu laden: die korrigierte ergebnis.json gilt jetzt
             auftrag = b.offener_auftrag()
             if auftrag:
                 b.auftrag_ausfuehren(auftrag)

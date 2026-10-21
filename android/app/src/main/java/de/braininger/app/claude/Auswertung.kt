@@ -114,6 +114,44 @@ object Auswertung {
         return Ergebnis(pruefen(antwort.daten, modus, v, offene), antwort.dollar)
     }
 
+    /**
+     * Knopf „Korrigieren“ (Wunsch 21.10.2026: „Naira“ statt „Lasse“): Jan sagt in eigenen Worten, was falsch ist,
+     * Claude schreibt die Notizen damit neu und ändert nur, was die Korrektur betrifft.
+     * Rückgabe: geprüfte Felder kurz und notizen.
+     */
+    suspend fun korrigieren(
+        context: Context, modus: String, notizen: JSONArray, abschnitte: List<Abschnitt>, korrektur: String,
+    ): Ergebnis {
+        val v = vorgaben(context)
+        val felder = v.schema.getJSONObject("properties")
+        val schema = JSONObject()
+            .put("type", "object")
+            .put("properties", JSONObject().put("kurz", felder.getJSONObject("kurz")).put("notizen", felder.getJSONObject("notizen")))
+            .put("required", JSONArray().put("kurz").put("notizen"))
+            .put("additionalProperties", false)
+        val name = Einstellungen.name(context).ifBlank { "der Nutzer" }
+        val text = abschnitte.joinToString("\n") { "[${marke(it.start)}] ${it.text}" }.ifBlank { "(kein Text erkannt)" }
+        val inhalt = "# Bisherige Notizen\n\n${notizen.toString(1)}\n\n# Text der Aufnahme\n\n$text\n\n" +
+            "# Korrektur von $name\n\n${korrektur.trim()}\n\n" +
+            "Schreib die Notizen mit dieser Korrektur neu. Die Korrektur hat Vorrang vor dem erkannten Text. " +
+            "Ändere nur, was sie betrifft, und was direkt daraus folgt (z. B. „er“ statt „sie“, ein anderer Lebensbereich). " +
+            "Alles andere bleibt Wort für Wort gleich, auch Vorlage, Reihenfolge und Zeiten. Den Titel änderst du nur, " +
+            "wenn er falsch ist. Erwähne die Korrektur nicht in der Notiz."
+        val antwort = ClaudeAufruf.frage(
+            context,
+            system = listOf(systemPrompt(context, v), "# Vorlagen\n\n" + v.vorlagenText),
+            inhalt = inhalt,
+            schema = schema,
+            geschaetzt = 0.01 + (text.length + notizen.toString().length) / 3.2 * 0.10 / 1e6,
+        )
+        val roh = antwort.daten.optJSONArray("notizen") ?: JSONArray()
+        var neu = (0 until roh.length()).mapNotNull { roh.optJSONObject(it) }
+            .filter { it.optString("vorlage") in v.kennungen && it.optString("inhalt").isNotBlank() }
+        if (modus == "gedanke" && neu.isNotEmpty() && neu[0].optString("vorlage") == v.standard) neu = neu.take(1)
+        if (neu.isEmpty()) throw ClaudeFehler("Claude hat keine korrigierte Notiz geliefert.")
+        return Ergebnis(JSONObject().put("kurz", antwort.daten.optString("kurz")).put("notizen", JSONArray(neu)), antwort.dollar)
+    }
+
     /** Wie auswerten() am Laptop: was nicht zum Schema oder zu den Aufgaben passt, wird entfernt oder umgedeutet. */
     private fun pruefen(d: JSONObject, modus: String, v: Vorgaben, offene: List<Aufgabe>): JSONObject {
         val notizenRoh = d.optJSONArray("notizen") ?: JSONArray()

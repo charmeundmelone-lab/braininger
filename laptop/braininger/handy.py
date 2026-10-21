@@ -4,7 +4,8 @@ Die App erkennt den Text mit Whisper und schreibt die Notizen mit Claude über J
 - übernimmt fertige Handy-Ergebnisse in daten/aufnahmen/<id>/, damit Fragen sie finden,
 - schreibt die Notizen selbst, wenn die App darum bittet (ergebnis.json „auswertung“: „laptop_bitte“, z. B. weil der
   Monatsdeckel erreicht ist). Den Text nimmt er dann vom Handy, statt ihn neu zu erkennen,
-- wertet auf Wunsch neu aus (Auftrag „neu_auswerten“, siehe verarbeitung.py).
+- wertet auf Wunsch neu aus (Auftrag „neu_auswerten“, siehe verarbeitung.py),
+- übernimmt Korrekturen, die die App direkt ins Drive geschrieben hat (nachziehen).
 Solange die App noch arbeitet, fasst der Laptop die Aufnahme nicht an.
 """
 import json
@@ -58,6 +59,29 @@ def ganz_an_laptop(a: Aufnahme, lokal: Path) -> bool:
         ergebnis.lokal_schreiben(merker, "Spracherkennung am Handy fehlgeschlagen, Laptop übernimmt.\n")
         return True
     return False
+
+
+def nachziehen(a: Aufnahme, lokal: Path) -> bool:
+    """Knopf „Korrigieren“ in der App (21.10.2026): die App schreibt korrigierte Notizen direkt ins Drive und setzt
+    „korrigiert“. Ist das neuer als die lokale Fassung, übernimmt der Laptop sie, damit Fragen die richtige finden."""
+    lokale_datei = lokal / "ergebnis.json"
+    try:
+        if a.ergebnis_datei.stat().st_mtime <= lokale_datei.stat().st_mtime:
+            return False  # Drive-Datei nicht neuer: nichts zu tun, ohne sie zu lesen
+    except OSError:
+        return False
+    d = _drive_ergebnis(a)
+    if not d or not d.get("korrigiert") or d.get("status") != "fertig":
+        return False
+    try:
+        bisher = json.loads(lokale_datei.read_text(encoding="utf-8")).get("korrigiert")
+    except (OSError, ValueError):
+        bisher = None
+    if bisher == d["korrigiert"]:
+        return False
+    ergebnis.lokal_schreiben(lokale_datei, json.dumps(d, ensure_ascii=False, indent=1))
+    log.info("%s: Korrektur aus der App übernommen", a.id)
+    return True
 
 
 def vorbereiten(a: Aufnahme, lokal: Path) -> str | None:
