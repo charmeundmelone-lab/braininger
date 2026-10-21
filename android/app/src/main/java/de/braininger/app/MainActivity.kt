@@ -629,7 +629,9 @@ internal fun AufnahmeZeile(
             val kurz = ergebnis?.kurz
             if (kurz != null) {
                 Text(kurz, color = Weiss, fontSize = 15.sp, maxLines = 2)
-                Text("${a.modus.anzeige} · $datum", color = Grau, fontSize = 13.sp)
+                // Bereich auch als Wort, nicht nur als Farbe (W3C COGA: nicht allein auf Farbe verlassen)
+                val bereich = de.braininger.app.ui.Bereiche.von(ergebnis?.bereich)?.name
+                Text(listOfNotNull(bereich, a.modus.anzeige, datum).joinToString(" · "), color = Grau, fontSize = 13.sp, maxLines = 1)
             } else {
                 Text("${a.modus.anzeige} · $datum", color = Weiss, fontSize = 15.sp)
                 Text("${dauerText(a.dauerMs)} · ${a.mikrofon}", color = Grau, fontSize = 13.sp)

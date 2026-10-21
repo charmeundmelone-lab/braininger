@@ -79,11 +79,10 @@ fun FrageSeite(zurueck: () -> Unit, aufnahmeOeffnen: (String) -> Unit) {
             .safeDrawingPadding()
             .padding(horizontal = 20.dp)
     ) {
-        TextButton(onClick = zurueck, modifier = Modifier.padding(vertical = 8.dp)) {
-            Text("‹ ZURÜCK", color = Weiss, fontWeight = FontWeight.Bold)
-        }
-        Text("FRAGEN", fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 22.sp, color = Weiss)
-        Text("Claude antwortet aus allen deinen Aufnahmen, sobald der Laptop an ist.", color = Grau, fontSize = 12.sp)
+        // Fragen ist ein Reiter: kein ZURÜCK, Kopf wie bei den anderen Reitern
+        Spacer(Modifier.height(16.dp))
+        Text("FRAGEN", fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 24.sp, color = Weiss)
+        Text("Claude antwortet aus allen deinen Aufnahmen, sobald der Laptop an ist.", color = Grau, fontSize = 14.sp)
         Spacer(Modifier.height(12.dp))
         OutlinedTextField(
             value = eingabe, onValueChange = { eingabe = it.take(500) },

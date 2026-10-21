@@ -445,11 +445,14 @@ internal fun Markdown(text: String, ordner: java.io.File? = null) {
             foto != null -> ordner?.let { FotoBild(java.io.File(it, foto)) }
             zeile.isBlank() -> Spacer(Modifier.height(6.dp))
             zeile.startsWith("#") -> {
+                val titel = zeile.trimStart('#', ' ')
+                // Überschriften der Lebensbereiche in ihrer Farbe: dieselbe Farbe wie in Listen und Aufgaben
+                val bereich = de.braininger.app.ui.Bereiche.alle.firstOrNull { it.name.equals(titel, ignoreCase = true) }
                 Spacer(Modifier.height(6.dp))
                 HorizontalDivider(color = Linie)
                 Text(
-                    zeile.trimStart('#', ' ').uppercase(Locale.GERMANY),
-                    fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Grau,
+                    titel.uppercase(Locale.GERMANY),
+                    fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = bereich?.punkt ?: Grau,
                     modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
                 )
             }

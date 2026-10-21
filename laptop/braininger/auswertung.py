@@ -97,7 +97,9 @@ SCHEMA = {
     "type": "object",
     "properties": {
         "bereich": {"type": "string", "enum": BEREICHE, "description": "Hauptsächlicher Lebensbereich der Aufnahme."},
-        "kurz": {"type": "string", "description": "Ein Satz, worum es in der Aufnahme geht (für die Liste in der App)."},
+        "kurz": {"type": "string", "description": "Ein kurzer Satz, worum es in der Aufnahme geht (für die Liste in der "
+                                                 "App). Im Modus „gedanke“ in der Ich-Form, wie der Nutzer es selbst "
+                                                 "notieren würde („Ich koche jetzt für Anton …“)."},
         "notizen": {
             "type": "array",
             "items": {

@@ -122,7 +122,7 @@ fun AufgabenSeite() {
 private fun KorbAbschnitt(korb: String, liste: List<Aufgabe>, erledigt: List<Aufgabe>, oeffnen: (Aufgabe) -> Unit) {
     val context = LocalContext.current
     var alle by remember { mutableStateOf(false) }
-    Text(Koerbe.name(korb).uppercase() + if (liste.isNotEmpty()) "  ${liste.size}" else "",
+    Text(Koerbe.name(korb).uppercase(), // ohne Anzahl: Zahlen erzeugen Druck (Grill 20.10.2026)
          fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = Grau)
     Spacer(Modifier.height(4.dp))
     if (liste.isEmpty() && erledigt.isEmpty()) {
@@ -192,7 +192,7 @@ private fun VorschlagKarte(v: Vorschlag, bezugText: String?) {
         }
         Text(vorsatz + (if (v.art == "erledigt") bezugText ?: v.text else v.text), color = Weiss, fontSize = 15.sp)
         val zusatz = listOfNotNull(
-            v.frist?.let { Koerbe.fristText(it) },
+            v.frist?.let { Koerbe.fristText(it) }?.takeIf { it.isNotBlank() },
             "unklar, wer".takeIf { v.unklarWer },
             bezugText?.takeIf { v.art == "ergaenzen" }?.let { "bisher: $it" },
         )
@@ -236,7 +236,7 @@ internal fun AufgabeZeile(a: Aufgabe, abhaken: () -> Unit, oeffnen: () -> Unit) 
                 val zusatz = listOfNotNull(
                     a.heuteSeitFrueher()?.let { Koerbe.seitText(it) },
                     "ab morgen wieder in Heute".takeIf { a.zurueckAm?.let { it > System.currentTimeMillis() } == true },
-                    a.frist?.let { Koerbe.fristText(it) },
+                    a.frist?.let { Koerbe.fristText(it) }?.takeIf { it.isNotBlank() },
                     a.schritte.takeIf { it.isNotEmpty() }?.let { s -> "${s.count { it.erledigt }}/${s.size} Schritte" },
                     "unklar, wer".takeIf { a.unklarWer },
                 )
@@ -334,7 +334,7 @@ internal fun AufgabeDialog(a: Aufgabe, schliessen: () -> Unit) {
         title = { Text(a.text, color = Weiss, fontSize = 17.sp) },
         text = {
             Column {
-                Text(listOfNotNull(Koerbe.name(a.korbJetzt()), a.frist?.let { Koerbe.fristText(it) }).joinToString(" · "),
+                Text(listOfNotNull(Koerbe.name(a.korbJetzt()), a.frist?.let { Koerbe.fristText(it) }?.takeIf { it.isNotBlank() }).joinToString(" · "),
                      color = Grau, fontSize = 13.sp)
                 Spacer(Modifier.height(10.dp))
                 // heute / morgen / später (Frage 14)

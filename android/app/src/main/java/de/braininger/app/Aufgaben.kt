@@ -105,11 +105,11 @@ object Koerbe {
         }
     }
 
-    /** Frist ohne Uhrzeit: „bis Fr“, „bis morgen“. */
+    /** Frist ohne Uhrzeit: „bis Fr“, „bis morgen“. Verpasste Fristen bleiben leer: „seit …“ reicht (Grill 20.10.2026). */
     fun fristText(ms: Long, jetzt: Long = System.currentTimeMillis()): String {
         val t = tageBis(ms, jetzt)
         return when {
-            t < 0 -> "Frist war " + SimpleDateFormat("EE d.M.", Locale.GERMANY).format(Date(ms))
+            t < 0 -> ""
             t == 0 -> "bis heute"
             t == 1 -> "bis morgen"
             t <= 6 -> "bis " + SimpleDateFormat("EE", Locale.GERMANY).format(Date(ms))

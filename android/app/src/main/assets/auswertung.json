@@ -18,7 +18,7 @@
    },
    "kurz": {
     "type": "string",
-    "description": "Ein Satz, worum es in der Aufnahme geht (für die Liste in der App)."
+    "description": "Ein kurzer Satz, worum es in der Aufnahme geht (für die Liste in der App). Im Modus „gedanke“ in der Ich-Form, wie der Nutzer es selbst notieren würde („Ich koche jetzt für Anton …“)."
    },
    "notizen": {
     "type": "array",
