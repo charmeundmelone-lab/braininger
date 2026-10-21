@@ -91,7 +91,7 @@ fun HeuteBereich(aktualisierung: Int, zuAufgaben: () -> Unit) {
             Kreis(true, 22) { AufgabenSpeicher.wiederOeffnen(context, a.id) }
             Spacer(Modifier.width(12.dp))
             Text(a.text, color = Grau, fontSize = 14.sp, textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough,
-                 modifier = Modifier.weight(1f), maxLines = 2)
+                 modifier = Modifier.weight(1f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
     }
     if (!Kalender.erlaubt(context)) {

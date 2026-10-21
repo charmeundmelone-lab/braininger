@@ -134,7 +134,7 @@ private fun KorbAbschnitt(korb: String, liste: List<Aufgabe>, erledigt: List<Auf
     // heute Abgehaktes bleibt durchgestrichen stehen; Tipp auf den Kreis macht es wieder offen
     erledigt.forEach { a -> AufgabeZeile(a, { AufgabenSpeicher.wiederOeffnen(context, a.id) }) { } }
     if (liste.size > SICHTBAR) {
-        Text(if (alle) "WENIGER" else "ALLE ${liste.size} ZEIGEN", color = Weiss, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+        Text(if (alle) "WENIGER" else "ALLE ZEIGEN", color = Weiss, fontSize = 13.sp, fontWeight = FontWeight.Bold,
              modifier = Modifier.clickable { alle = !alle }.padding(vertical = 6.dp))
     }
     Spacer(Modifier.height(16.dp))
@@ -227,12 +227,13 @@ internal fun AufgabeZeile(a: Aufgabe, abhaken: () -> Unit, oeffnen: () -> Unit) 
             Kreis(fertig, 26, abhaken)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f).clickable(enabled = !fertig, onClick = oeffnen)) {
-                Text(a.text, color = if (fertig) Grau else Weiss, fontSize = 15.sp,
+                // Erledigtes klein und einzeilig: es soll zeigen, was geschafft ist, ohne Platz zu nehmen.
+                // Rückgängig geht weiter über den Kreis (der Hinweis dazu stand bisher unter jeder Zeile).
+                Text(a.text, color = if (fertig) Grau else Weiss, fontSize = if (fertig) 14.sp else 15.sp,
+                     maxLines = if (fertig) 1 else Int.MAX_VALUE,
+                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                      textDecoration = if (fertig) TextDecoration.LineThrough else null)
-                if (fertig) {
-                    Text("erledigt · zum Rückgängigmachen auf den Kreis tippen", color = Grau, fontSize = 12.sp)
-                    return@Column
-                }
+                if (fertig) return@Column
                 val zusatz = listOfNotNull(
                     a.heuteSeitFrueher()?.let { Koerbe.seitText(it) },
                     "ab morgen wieder in Heute".takeIf { a.zurueckAm?.let { it > System.currentTimeMillis() } == true },
