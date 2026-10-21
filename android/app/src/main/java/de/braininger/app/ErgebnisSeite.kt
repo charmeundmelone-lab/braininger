@@ -16,7 +16,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.HorizontalDivider
@@ -87,9 +90,22 @@ fun ErgebnisSeite(
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 8.dp)) {
             TextButton(onClick = zurueck) { Text("‹ ZURÜCK", color = Weiss, fontWeight = FontWeight.Bold) }
             Spacer(Modifier.weight(1f))
-            // Archivieren / Nach vorne / Löschen / Zurückholen
-            for ((text, aktion) in knoepfe) {
-                TextButton(onClick = aktion) { Text(text, color = Grau, fontWeight = FontWeight.Bold, fontSize = 13.sp) }
+            // Archivieren / Nach vorne / Neu auswerten / Löschen / Zurückholen: ein Menü statt einer gequetschten
+            // Knopfreihe, damit oben nur eine Entscheidung sichtbar ist (W3C COGA „Avoid Too Much Content“)
+            if (knoepfe.isNotEmpty()) {
+                var menue by remember { mutableStateOf(false) }
+                Box {
+                    TextButton(onClick = { menue = true }) { Text("MEHR  ⋯", color = Weiss, fontWeight = FontWeight.Bold, fontSize = 14.sp) }
+                    DropdownMenu(expanded = menue, onDismissRequest = { menue = false },
+                                 containerColor = androidx.compose.ui.graphics.Color(0xFF111111)) {
+                        for ((text, aktion) in knoepfe) {
+                            DropdownMenuItem(
+                                text = { Text(text, color = Weiss, fontSize = 16.sp) },
+                                onClick = { menue = false; aktion() },
+                            )
+                        }
+                    }
+                }
             }
         }
         Text(aufnahme.modus.anzeige.uppercase(), fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 22.sp, color = Weiss)
@@ -134,8 +150,9 @@ fun ErgebnisSeite(
                 Spacer(Modifier.weight(1f))
                 if (ergebnis.status == "fertig" && ergebnis.notizen.isNotEmpty() && offenerAuftrag == null && !korrekturLaeuft) {
                     Text(
-                        "KORRIGIEREN", color = Weiss, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.clickable { meldung = null; korrekturOffen = true }.padding(6.dp),
+                        "KORRIGIEREN", color = Weiss, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.border(1.dp, Weiss, RoundedCornerShape(16.dp))
+                            .clickable { meldung = null; korrekturOffen = true }.padding(horizontal = 14.dp, vertical = 8.dp),
                     )
                 }
             }
@@ -393,19 +410,20 @@ private fun NotizKarte(n: Notiz, ordner: java.io.File, aenderbar: Boolean, vorla
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(Vorlagen.name(n.vorlage).uppercase(), color = Grau, fontSize = 11.sp, letterSpacing = 1.5.sp, modifier = Modifier.weight(1f))
             val context = LocalContext.current
+            // Tippflächen mindestens 48 dp hoch (Material: Mindestgröße für Ziele)
             Text(
-                "TEILEN", color = Weiss, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                "TEILEN", color = Weiss, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.clickable {
                     val text = n.titel + "\n\n" + n.inhalt.lines().filterNot { it.trim().startsWith("![") }.joinToString("\n").trim()
                     context.startActivity(android.content.Intent.createChooser(
                         android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain")
                             .putExtra(android.content.Intent.EXTRA_TEXT, text), null))
-                }.padding(6.dp),
+                }.padding(horizontal = 10.dp, vertical = 14.dp),
             )
             if (aenderbar) {
                 Text(
-                    "ÄNDERN", color = Weiss, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clickable(onClick = vorlageAendern).padding(6.dp),
+                    "VORLAGE", color = Weiss, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable(onClick = vorlageAendern).padding(horizontal = 10.dp, vertical = 14.dp),
                 )
             }
         }

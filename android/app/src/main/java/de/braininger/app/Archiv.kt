@@ -143,7 +143,6 @@ fun PapierkorbSeite(
                     if (auswahl.isNotEmpty()) auswahl = if (id in auswahl) auswahl - id else auswahl + id
                     else oeffnen(id)
                 }
-                HorizontalDivider(color = Linie)
             }
             item { Spacer(Modifier.height(120.dp)) }
         }
@@ -223,7 +222,6 @@ private fun LazyListScope.nachTagen(
                 if (auswahl.isNotEmpty()) auswahlSetzen(if (id in auswahl) auswahl - id else auswahl + id)
                 else oeffnen(id)
             }
-            HorizontalDivider(color = Linie)
         }
     }
 }

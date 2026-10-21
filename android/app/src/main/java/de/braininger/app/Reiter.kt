@@ -49,8 +49,9 @@ fun ReiterLeiste(aktiv: String, waehlen: (String) -> Unit) {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    Text(name, fontFamily = Punktschrift, fontWeight = if (an) FontWeight.Bold else FontWeight.Normal,
-                         fontSize = 13.sp, color = if (an) Weiss else Grau, maxLines = 1)
+                    // immer fett und etwas größer: die Punktschrift ist dünn sonst schwer zu lesen
+                    Text(name, fontFamily = Punktschrift, fontWeight = FontWeight.Bold,
+                         fontSize = 14.sp, color = if (an) Weiss else Grau, maxLines = 1)
                     Spacer(Modifier.height(4.dp))
                     Spacer(Modifier.height(3.dp).fillMaxWidth(0.35f).background(if (an) Weiss else Schwarz))
                 }
@@ -129,7 +130,6 @@ fun AufnahmenListe(
                 Text(Suche.hervorheben(ausschnitt, suche), color = Grau, fontSize = 13.sp,
                      modifier = Modifier.padding(bottom = 10.dp).clickable { oeffnen(id) })
             }
-            HorizontalDivider(color = Linie)
         }
         if (suche.isBlank() && (imArchiv > 0 || imPapierkorb > 0)) {
             item {

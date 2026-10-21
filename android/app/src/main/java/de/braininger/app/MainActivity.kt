@@ -378,7 +378,9 @@ private fun Startseite(aktualisierung: Int, startReiter: String?, reiterGelesen:
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("BRAININGER", fontFamily = Punktschrift, fontWeight = FontWeight.Bold, fontSize = 34.sp, color = Weiss)
-                    Text("Gedanken und Gespräche festhalten", color = Grau, fontSize = 13.sp)
+                    // Datum statt Werbezeile: hilft bei der Orientierung in der Zeit
+                    Text(remember(abrufZaehler / 12) { SimpleDateFormat("EEEE, d. MMMM", Locale.GERMANY).format(Date()) },
+                         color = Grau, fontSize = 15.sp)
                 }
                 Text("⚙", color = Grau, fontSize = 26.sp, modifier = Modifier.clickable { zeigeEinstellungen = true }.padding(8.dp))
             }
@@ -518,7 +520,7 @@ private fun LaufendeAufnahme(z: AufnahmeZustand, jetzt: Long, stopp: () -> Unit)
         Spacer(Modifier.height(4.dp))
         Text(
             "${z.mikrofon} · ${z.stueckeFertig} Stücke gesichert",
-            color = if (z.mikrofonExtern) Grau else Rot, fontSize = 13.sp,
+            color = if (z.mikrofonExtern) Grau else Weiss, fontSize = 13.sp,
         )
         Spacer(Modifier.height(16.dp))
         val context = LocalContext.current
@@ -562,12 +564,13 @@ private fun Hinweis(text: String, knopf: String, onClick: () -> Unit) {
         Modifier
             .fillMaxWidth()
             .padding(bottom = 16.dp)
-            .border(1.dp, Rot, RoundedCornerShape(16.dp))
+            // ruhig statt rot: ein Hinweis ist kein Fehler (Grill 20.10.2026: Rot ist der größte Stress-Auslöser)
+            .border(1.dp, Weiss, RoundedCornerShape(16.dp))
             .padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(text, color = Weiss, fontSize = 13.sp, modifier = Modifier.weight(1f))
-        TextButton(onClick = onClick) { Text(knopf, color = Rot, fontWeight = FontWeight.Bold) }
+        Text(text, color = Weiss, fontSize = 14.sp, modifier = Modifier.weight(1f))
+        TextButton(onClick = onClick) { Text(knopf, color = Weiss, fontWeight = FontWeight.Bold) }
     }
 }
 
@@ -611,13 +614,10 @@ internal fun AufnahmeZeile(
         Modifier
             .fillMaxWidth()
             .padding(vertical = 3.dp)
-            .background(
-                if (ausgewaehlt) Ausgewaehlt
-                else de.braininger.app.ui.Bereiche.von(ergebnis?.bereich)?.flaeche ?: androidx.compose.ui.graphics.Color.Transparent,
-                RoundedCornerShape(12.dp),
-            )
+            // alle Karten gleich gebaut: mit Lebensbereich farbig, sonst neutral dunkel, immer gleicher Rand
+            .background(if (ausgewaehlt) Ausgewaehlt else de.braininger.app.ui.Bereiche.flaeche(ergebnis?.bereich), RoundedCornerShape(14.dp))
             .combinedClickable(onClick = oeffnen, onLongClick = lang)
-            .padding(vertical = 10.dp, horizontal = if (ausgewaehlt || ergebnis?.bereich?.isNotBlank() == true) 10.dp else 0.dp),
+            .padding(vertical = 12.dp, horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (ausgewaehlt) {
@@ -625,19 +625,25 @@ internal fun AufnahmeZeile(
             Spacer(Modifier.width(10.dp))
         }
         Column(Modifier.weight(1f)) {
-            Text("${a.modus.anzeige} · $datum", color = Weiss, fontSize = 15.sp)
-            Text(
-                ergebnis?.kurz ?: "${dauerText(a.dauerMs)} · ${a.stuecke} Stücke · ${a.mikrofon}",
-                color = Grau, fontSize = 12.sp, maxLines = 2,
-            )
-            hinweis?.let { Text(it, color = Rot, fontSize = 12.sp) }
+            // Inhalt zuerst, Art und Zeit klein darunter: man erkennt eine Aufnahme an dem, worum es ging
+            val kurz = ergebnis?.kurz
+            if (kurz != null) {
+                Text(kurz, color = Weiss, fontSize = 15.sp, maxLines = 2)
+                Text("${a.modus.anzeige} · $datum", color = Grau, fontSize = 13.sp)
+            } else {
+                Text("${a.modus.anzeige} · $datum", color = Weiss, fontSize = 15.sp)
+                Text("${dauerText(a.dauerMs)} · ${a.mikrofon}", color = Grau, fontSize = 13.sp)
+            }
+            hinweis?.let { Text(it, color = Grau, fontSize = 13.sp) }
         }
-        Spacer(Modifier.width(8.dp))
-        Text(
-            statusText,
-            color = if (a.status == "unterbrochen" || ergebnis?.status == "fehler") Rot
-                    else if (ergebnis?.status == "fertig") Weiss else Grau,
-            fontSize = 12.sp,
-        )
+        // „fertig“ ist der Normalfall und bleibt unsichtbar; angezeigt wird nur, was noch läuft oder hängt
+        if (ergebnis?.status != "fertig" || handy != null) {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                statusText,
+                color = if (a.status == "unterbrochen" || ergebnis?.status == "fehler") Rot else Grau,
+                fontSize = 13.sp,
+            )
+        }
     }
 }
