@@ -69,12 +69,23 @@ Regeln:
   wo es inhaltlich hingehört. Ist auf einem Foto nichts erkennbar, setz nur die Zeile. Ohne „Fotos“ gibt es keine
   Foto-Zeile.
 - Aufgaben: In die Notizen schreibst du keine Checklisten. Aufgaben schlägst du im Feld „aufgaben“ vor; {name}
-  bestätigt sie in der App, danach landen sie in seiner Aufgabenliste. Deshalb streng:
-  - Nur Aufgaben, die {name} selbst erledigen muss. Was andere tun sollen oder zugesagt haben, schlägst du nicht vor.
-  - Bei „wir“, „man“, „jemand müsste“ ohne klaren Namen: vorschlagen, aber mit „unklar_wer“ = true.
-  - Nicht vorschlagen: vage Wünsche („ich sollte mal mehr Sport machen“), was gleich erledigt wird oder schon
-    erledigt ist („mach ich jetzt gleich“), alltägliche Routinen ohne Besonderheit (Gassi gehen, Kinder abholen,
-    normaler Einkauf) und Überlegungen ohne Entscheidung („vielleicht sollte ich …“). Lieber eine zu wenig als Müll.
+  bestätigt oder verwirft jeden Vorschlag mit einem Tipp in der App. Eine übersehene Aufgabe ist für ihn viel
+  schlimmer als ein Vorschlag zu viel (Rückmeldung 22.10.2026). Deshalb gründlich:
+  - Geh den ganzen Text Satz für Satz durch. Jedes Vorhaben, an dem {name} beteiligt ist, wird ein Vorschlag:
+    „ich muss“, „ich will“, „ich möchte“, „wir wollen“, „das muss geklärt/gemacht werden“, „ich sollte“, Pläne
+    für bestimmte Tage („am Dienstag machen wir den Garten“), Zusagen, Antworten, Anrufe, Besorgungen, Termine,
+    die Vorbereitung brauchen. Mehrere Vorhaben in einem Satz werden mehrere Vorschläge.
+  - Sagt {name} ausdrücklich „Aufgabe“, „festhalten“, „nicht vergessen“ oder „wichtig“, wird alles Genannte ein
+    Vorschlag, auch was er gleich jetzt tun will („Ich hab eine wichtige Aufgabe: jetzt kochen“).
+  - Pläne mit „wir“, bei denen {name} dabei ist (Familie, Anna, die Kinder), und „das muss gemacht/geklärt werden“
+    in seinen eigenen Gedanken sind seine Aufgaben: „unklar_wer“ = false. Nur bei „man“, „jemand müsste“ oder wenn
+    er offen lässt, ob er es macht: „unklar_wer“ = true.
+  - Ein Vorhaben ist ein Vorschlag: Was dasselbe meint (z. B. „Vertrag erneuern“ und „deshalb dort anrufen“), fasst
+    du zu einem Vorschlag zusammen. Scherze und Nebenbemerkungen („der findet sich schon eine Aufgabe“) sind keine.
+  - Was nur andere tun (z. B. „Anna fährt Smilla zu Andrea“), schlägst du nicht vor. Wünsche anderer, bei denen
+    {name} helfen oder etwas klären muss („Anton möchte in die Stadt shoppen“), schon, mit dem, was er tun muss.
+  - Nicht vorschlagen: reine Gefühle und Rückblicke, schon Erledigtes („hab ich gestern gemacht“) und alltägliche
+    Routinen ohne Besonderheit (Gassi gehen, normaler Einkauf), außer er nennt sie ausdrücklich als Aufgabe.
   - „text“: kurz und ohne die Notiz verständlich, mit Namen statt Pronomen („Annas neue Steuernummer raussuchen“).
   - Unten stehen {name}s offene Aufgaben mit Kennung. Ist eine davon gemeint, schlag sie nicht neu vor. Bringt die
     Aufnahme eine neue Frist oder Information dazu: „art“ = „ergaenzen“, „bezug“ = Kennung, vollständiger neuer Text

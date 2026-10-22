@@ -27,7 +27,9 @@ object Whisper {
         }
     }
 
-    private external fun erkennenNativ(modell: String, vad: String, pcm: FloatArray, threads: Int, sprache: String): ByteArray
+    private external fun erkennenNativ(
+        modell: String, vad: String, pcm: FloatArray, threads: Int, sprache: String, hinweis: String,
+    ): ByteArray
     private external fun fortschrittNativ(): Int
     private external fun abbrechenNativ()
 
@@ -39,11 +41,18 @@ object Whisper {
         if (geladen) abbrechenNativ()
     }
 
-    /** pcm: 16 kHz, mono, Werte −1…1. versatzS wird auf alle Zeiten addiert. */
-    suspend fun erkennen(modell: File, vad: File, pcm: FloatArray, versatzS: Double, sprache: String = "de"): List<Erkannt> =
+    /**
+     * pcm: 16 kHz, mono, Werte −1…1. versatzS wird auf alle Zeiten addiert.
+     * hinweis: Begriffe aus dem Wörterbuch („Lasse, Naira, Braininger.“), Whisper bevorzugt sie beim Hören.
+     */
+    suspend fun erkennen(
+        modell: File, vad: File, pcm: FloatArray, versatzS: Double, sprache: String = "de", hinweis: String = "",
+    ): List<Erkannt> =
         withContext(Dispatchers.Default) {
             laden()
-            val antwort = JSONObject(erkennenNativ(modell.absolutePath, vad.absolutePath, pcm, THREADS, sprache).decodeToString())
+            val antwort = JSONObject(
+                erkennenNativ(modell.absolutePath, vad.absolutePath, pcm, THREADS, sprache, hinweis).decodeToString()
+            )
             if (antwort.optBoolean("abgebrochen")) throw ErkennungAbgebrochen()
             antwort.optString("fehler").takeIf { it.isNotBlank() }?.let { throw IllegalStateException(it) }
             val a = antwort.optJSONArray("abschnitte")

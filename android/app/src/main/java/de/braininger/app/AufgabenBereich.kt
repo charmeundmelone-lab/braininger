@@ -48,7 +48,6 @@ import de.braininger.app.ui.Bereiche
 import de.braininger.app.ui.Grau
 import de.braininger.app.ui.Linie
 import de.braininger.app.ui.Punktschrift
-import de.braininger.app.ui.Rot
 import de.braininger.app.ui.Schwarz
 import de.braininger.app.ui.Weiss
 import kotlinx.coroutines.launch
@@ -106,9 +105,10 @@ fun AufgabenSeite() {
         }
 
         val erledigt = remember(stand) { AufgabenSpeicher.erledigtHeute(context) }
-        for (korb in listOf(Koerbe.HEUTE, Koerbe.WOCHE, Koerbe.IRGENDWANN)) {
+        for (korb in listOf(Koerbe.HEUTE, Koerbe.LIEGEN, Koerbe.WOCHE, Koerbe.IRGENDWANN)) {
             val liste = offene.filter { it.korbJetzt() == korb }
-            KorbAbschnitt(korb, liste, if (korb == Koerbe.HEUTE) erledigt else emptyList()) { bearbeiten = it }
+            if (korb == Koerbe.LIEGEN) LiegenAbschnitt(liste) { bearbeiten = it }
+            else KorbAbschnitt(korb, liste, if (korb == Koerbe.HEUTE) erledigt else emptyList()) { bearbeiten = it }
         }
         if (offene.isEmpty()) Text("Keine offenen Aufgaben.", color = Grau, fontSize = 14.sp)
         Spacer(Modifier.height(24.dp))
@@ -138,6 +138,31 @@ private fun KorbAbschnitt(korb: String, liste: List<Aufgabe>, erledigt: List<Auf
              modifier = Modifier.clickable { alle = !alle }.padding(vertical = 6.dp))
     }
     Spacer(Modifier.height(16.dp))
+}
+
+/**
+ * Was aus „heute“ von den Vortagen übrig ist (22.10.2026): eine ruhige, zugeklappte Zeile ohne Zahl. Aufgeklappt
+ * holt Jan sich mit HEUTE bewusst zurück, was dran ist; der Rest wartet, ohne jeden Tag oben zu stehen.
+ */
+@Composable
+private fun LiegenAbschnitt(liste: List<Aufgabe>, oeffnen: (Aufgabe) -> Unit) {
+    if (liste.isEmpty()) return
+    val context = LocalContext.current
+    var offen by remember { mutableStateOf(false) }
+    Row(
+        Modifier.fillMaxWidth().padding(bottom = 12.dp).border(1.dp, Linie, RoundedCornerShape(14.dp))
+            .clickable { offen = !offen }.padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("Von den letzten Tagen liegt noch etwas", color = Weiss, fontSize = 15.sp, modifier = Modifier.weight(1f))
+        Text(if (offen) "▾" else "›", color = Weiss, fontSize = 18.sp)
+    }
+    if (offen) {
+        Text("Tipp eine Aufgabe an und hol sie mit HEUTE zurück, wenn sie heute dran ist.",
+             color = Grau, fontSize = 13.sp, modifier = Modifier.padding(bottom = 6.dp))
+        liste.forEach { a -> AufgabeZeile(a, { AufgabenSpeicher.abhaken(context, a.id) }) { oeffnen(a) } }
+        Spacer(Modifier.height(16.dp))
+    }
 }
 
 /** Sonntags: drei alte Aufgaben aus „Irgendwann“ – holen, behalten oder weg (Frage 59). */
@@ -383,7 +408,7 @@ internal fun AufgabeDialog(a: Aufgabe, schliessen: () -> Unit) {
                     Text("FRIST ENTFERNEN", color = Weiss)
                 }
                 TextButton(onClick = { teilen(context, a.text); schliessen() }) { Text("TEILEN", color = Weiss) }
-                TextButton(onClick = { AufgabenSpeicher.loeschen(context, a.id); schliessen() }) { Text("LÖSCHEN", color = Rot) }
+                TextButton(onClick = { AufgabenSpeicher.loeschen(context, a.id); schliessen() }) { Text("LÖSCHEN", color = Grau) } // kein Rot (Grill 20.10.2026)
             }
         },
         confirmButton = {

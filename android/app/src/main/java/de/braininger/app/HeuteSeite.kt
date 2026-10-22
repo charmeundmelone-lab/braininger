@@ -100,6 +100,14 @@ fun HeuteBereich(aktualisierung: Int, zuAufgaben: () -> Unit) {
                  .clickable { kalenderAnfrage.launch(Manifest.permission.READ_CALENDAR) }
                  .padding(horizontal = 12.dp, vertical = 8.dp))
     }
+    // Liegengebliebenes von den Vortagen: nur eine Zeile, ohne Zahl (Aufgaben-Reiter zeigt es aufgeklappt)
+    val liegt = remember(aufgabenStand, aktualisierung) { AufgabenSpeicher.imKorb(context, Koerbe.LIEGEN).isNotEmpty() }
+    if (liegt) {
+        Row(Modifier.fillMaxWidth().padding(top = 10.dp).clickable(onClick = zuAufgaben).padding(vertical = 6.dp)) {
+            Text("Von den letzten Tagen liegt noch etwas", color = Grau, fontSize = 14.sp, modifier = Modifier.weight(1f))
+            Text("›", color = Grau, fontSize = 18.sp)
+        }
+    }
     if (vorschlaege > 0) {
         Row(Modifier.fillMaxWidth().padding(top = 10.dp).clickable(onClick = zuAufgaben).padding(vertical = 6.dp)) {
             Text(if (vorschlaege == 1) "1 Vorschlag ansehen" else "$vorschlaege Vorschläge ansehen",

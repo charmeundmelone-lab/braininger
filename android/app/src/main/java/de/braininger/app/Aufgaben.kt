@@ -51,8 +51,17 @@ data class Aufgabe(
     val bereich: String = "",
     val schritte: List<Schritt> = emptyList(),
 ) {
-    /** Korb, in dem die Aufgabe jetzt steht. Eine Frist zieht sie am Vortag nach „heute“, in der Woche davor nach „woche“. */
+    /**
+     * Korb, in dem die Aufgabe jetzt steht. Eine Frist zieht sie am Vortag nach „heute“, in der Woche davor nach „woche“.
+     * Jeden Morgen frisch (22.10.2026, gegen den Stau in „heute“): Was schon vor heute in „heute“ stand und weder heute
+     * dorthin geholt wurde noch heute oder morgen fällig ist, steht in [Koerbe.LIEGEN]. Gespeichert wird dabei nichts.
+     */
     fun korbJetzt(jetzt: Long = System.currentTimeMillis()): String {
+        val k = korbOhneTag(jetzt)
+        return if (k == Koerbe.HEUTE && liegtSeitVortagen(jetzt)) Koerbe.LIEGEN else k
+    }
+
+    private fun korbOhneTag(jetzt: Long): String {
         zurueckAm?.let { if (it > jetzt) return Koerbe.WOCHE }
         frist?.let { f ->
             val tage = Koerbe.tageBis(f, jetzt)
@@ -63,12 +72,20 @@ data class Aufgabe(
         return korb
     }
 
+    private fun liegtSeitVortagen(jetzt: Long): Boolean {
+        val heuteBeginn = Koerbe.tagBeginn(jetzt)
+        if (heuteSeit != null && heuteSeit >= heuteBeginn) return false // heute bewusst geholt
+        if (zurueckAm != null && zurueckAm >= heuteBeginn) return false // „morgen“ von gestern ist heute
+        if (frist != null && Koerbe.tageBis(frist, jetzt) in 0..1) return false // heute oder morgen fällig
+        return seitWann() < heuteBeginn
+    }
+
+    private fun seitWann(): Long = listOfNotNull(heuteSeit, zurueckAm, frist?.let { it - 86_400_000L }).minOrNull() ?: erstellt
+
     /** Seit wann die Aufgabe schon in „heute“ steht, wenn das vor heute war (für das ruhige „seit Montag“), sonst null. */
     fun heuteSeitFrueher(jetzt: Long = System.currentTimeMillis()): Long? {
-        if (korbJetzt(jetzt) != Koerbe.HEUTE) return null
-        val heuteBeginn = Koerbe.tagBeginn(jetzt)
-        val seit = listOfNotNull(heuteSeit, zurueckAm, frist?.let { it - 86_400_000L }).minOrNull() ?: return null
-        return seit.takeIf { it < heuteBeginn }
+        if (korbJetzt(jetzt) != Koerbe.HEUTE && korbJetzt(jetzt) != Koerbe.LIEGEN) return null
+        return seitWann().takeIf { it < Koerbe.tagBeginn(jetzt) }
     }
 }
 
@@ -77,8 +94,12 @@ object Koerbe {
     const val WOCHE = "woche"
     const val IRGENDWANN = "irgendwann"
 
+    /** Nur zur Anzeige, nie gespeichert: aus „heute“ von den Vortagen liegen geblieben (siehe [Aufgabe.korbJetzt]). */
+    const val LIEGEN = "liegen"
+
     fun name(korb: String) = when (korb) {
         HEUTE -> "Heute"
+        LIEGEN -> "Von den letzten Tagen"
         WOCHE -> "Diese Woche"
         else -> "Irgendwann"
     }

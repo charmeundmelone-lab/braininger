@@ -27,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,7 +46,9 @@ import de.braininger.app.ui.Linie
 import de.braininger.app.ui.Punktschrift
 import de.braininger.app.ui.Schwarz
 import de.braininger.app.ui.Weiss
+import de.braininger.app.drive.WoerterbuchAblage
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 @Composable
@@ -58,6 +61,9 @@ fun EinstellungenSeite(zurueck: () -> Unit) {
     var beschreibung by remember { mutableStateOf(Einstellungen.beschreibung(context)) }
     var gespeichert by remember { mutableStateOf<String?>(null) }
     var angabenGespeichert by remember { mutableStateOf<String?>(null) }
+    var woerterbuch by remember { mutableStateOf(Einstellungen.woerterbuch(context)) }
+    var woerterbuchMeldung by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
     var neuerSchluessel by remember { mutableStateOf(false) }
     val kalenderAnfrage = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         stand++
@@ -155,6 +161,29 @@ fun EinstellungenSeite(zurueck: () -> Unit) {
             KleinerKnopf("ÜBERNEHMEN") { Einstellungen.speichern(context, name, beschreibung); angabenGespeichert = "Gespeichert ✓" }
         }
         angabenGespeichert?.let { Text(it, color = Weiss, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }
+        Spacer(Modifier.height(24.dp))
+
+        // --- Wörterbuch ---
+        Ueberschrift("WÖRTERBUCH")
+        Text("Namen und Wörter, die oft falsch verstanden werden. Einer pro Zeile, so geschrieben, wie sie in den " +
+             "Notizen stehen sollen. Die wichtigsten nach oben.", color = Grau, fontSize = 13.sp)
+        OutlinedTextField(woerterbuch, { woerterbuch = it.take(3000) }, colors = feld, minLines = 4, maxLines = 12,
+            placeholder = { Text("Lasse\nNaira\nSaitenwürstle", color = Grau) }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+        Row(Modifier.padding(top = 6.dp)) {
+            KleinerKnopf("SPEICHERN") {
+                Einstellungen.woerterbuchSpeichern(context, woerterbuch)
+                woerterbuchMeldung = "Gespeichert ✓"
+                scope.launch {
+                    woerterbuchMeldung = try {
+                        WoerterbuchAblage.hochladen(context)
+                        "Gespeichert ✓ und für den Laptop ins Drive gelegt"
+                    } catch (_: Exception) {
+                        "Gespeichert ✓ (nur am Handy, das Drive war nicht erreichbar)"
+                    }
+                }
+            }
+        }
+        woerterbuchMeldung?.let { Text(it, color = Weiss, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }
         Spacer(Modifier.height(24.dp))
 
         // --- Kalender ---

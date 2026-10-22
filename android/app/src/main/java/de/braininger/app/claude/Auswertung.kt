@@ -13,7 +13,8 @@ import java.util.Locale
 /**
  * Notizen aus dem erkannten Text, nach denselben Regeln wie am Laptop (laptop/braininger/auswertung.py).
  * Anweisungen, Vorlagen und Schema kommen aus assets/auswertung.json; die Datei erzeugt
- * laptop/werkzeuge/auswertung_exportieren.py. Das Wörterbuch und die Stimmerkennung gibt es nur am Laptop.
+ * laptop/werkzeuge/auswertung_exportieren.py. Das Wörterbuch kommt aus den Einstellungen; die Stimmerkennung gibt es
+ * nur am Laptop.
  */
 object Auswertung {
     /** Lebensbereiche wie in auswertung.py (BEREICHE), für die Farben. */
@@ -62,6 +63,14 @@ object Auswertung {
 
     private fun minSek(s: Long) = String.format(Locale.ROOT, "%d:%02d", s / 60, s % 60)
 
+    /** Wie _woerterbuch_text() am Laptop. Steht in der Nachricht, nicht in den Anweisungen, damit der Zwischenspeicher hält. */
+    private fun woerterbuchText(context: Context): String {
+        val b = Einstellungen.begriffe(context)
+        if (b.isEmpty()) return ""
+        return "# Wörterbuch\n\nSo werden diese Namen und Begriffe geschrieben. Klingt etwas im Text ähnlich " +
+            "und passt der Zusammenhang, ist dieser Begriff gemeint:\n" + b.joinToString(", ") + "\n\n"
+    }
+
     /** Gleicher Aufbau wie prompt_bauen() am Laptop; die Vorlagen stehen hier in den Anweisungen (Zwischenspeicher). */
     private fun inhalt(
         modus: String, startIso: String, dauerS: Double, sprache: String, hinweise: List<String>,
@@ -100,7 +109,7 @@ object Auswertung {
         val antwort = ClaudeAufruf.frage(
             context,
             system = listOf(systemPrompt(context, v), "# Vorlagen\n\n" + v.vorlagenText),
-            inhalt = inhalt(modus, startIso, dauerS, sprache, hinweise, markierungen,
+            inhalt = woerterbuchText(context) + inhalt(modus, startIso, dauerS, sprache, hinweise, markierungen,
                 fotos.map { it.first.name to it.second }, offene, abschnitte),
             schema = v.schema,
             bilder = fotos.map { it.first },
@@ -131,7 +140,7 @@ object Auswertung {
             .put("additionalProperties", false)
         val name = Einstellungen.name(context).ifBlank { "der Nutzer" }
         val text = abschnitte.joinToString("\n") { "[${marke(it.start)}] ${it.text}" }.ifBlank { "(kein Text erkannt)" }
-        val inhalt = "# Bisherige Notizen\n\n${notizen.toString(1)}\n\n# Text der Aufnahme\n\n$text\n\n" +
+        val inhalt = woerterbuchText(context) + "# Bisherige Notizen\n\n${notizen.toString(1)}\n\n# Text der Aufnahme\n\n$text\n\n" +
             "# Korrektur von $name\n\n${korrektur.trim()}\n\n" +
             "Schreib die Notizen mit dieser Korrektur neu. Die Korrektur hat Vorrang vor dem erkannten Text. " +
             "Ändere nur, was sie betrifft, und was direkt daraus folgt (z. B. „er“ statt „sie“, ein anderer Lebensbereich). " +

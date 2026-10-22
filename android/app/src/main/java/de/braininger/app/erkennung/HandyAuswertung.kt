@@ -203,7 +203,7 @@ object HandyAuswertung {
                     }
                 }
                 try {
-                    Whisper.erkennen(modell, vad, pcm, versatz)
+                    Whisper.erkennen(modell, vad, pcm, versatz, hinweis = de.braininger.app.Einstellungen.erkennungsHinweis(context))
                 } finally {
                     anzeige.cancel()
                 }

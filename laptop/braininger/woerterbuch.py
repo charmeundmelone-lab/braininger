@@ -40,10 +40,13 @@ def anlegen() -> None:
 
 
 def begriffe() -> list[str]:
-    try:
-        zeilen = DATEI.read_text(encoding="utf-8-sig").splitlines()
-    except OSError:
-        return []
+    """Erst die Datei am Laptop, dann das Wörterbuch aus der App (Drive: Braininger/woerterbuch.txt, ab 22.10.2026)."""
+    zeilen = []
+    for datei in (DATEI, E.EINGANG.parent / "woerterbuch.txt"):
+        try:
+            zeilen += datei.read_text(encoding="utf-8-sig").splitlines()
+        except OSError:
+            pass
     gesehen: set[str] = set()
     aus = []
     for z in zeilen:

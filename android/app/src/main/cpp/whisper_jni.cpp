@@ -45,12 +45,14 @@ static bool soll_abbrechen(void *) {
 
 extern "C" JNIEXPORT jbyteArray JNICALL
 Java_de_braininger_app_erkennung_Whisper_erkennenNativ(JNIEnv *env, jobject, jstring jmodell, jstring jvad,
-                                                       jfloatArray jpcm, jint threads, jstring jsprache) {
+                                                       jfloatArray jpcm, jint threads, jstring jsprache,
+                                                       jstring jhinweis) {
     g_fortschritt.store(0);
     g_abbrechen.store(false);
     const char *modell = env->GetStringUTFChars(jmodell, nullptr);
     const char *vad = env->GetStringUTFChars(jvad, nullptr);
     const char *sprache = env->GetStringUTFChars(jsprache, nullptr);
+    const char *hinweis = env->GetStringUTFChars(jhinweis, nullptr);
 
     whisper_context_params cparams = whisper_context_default_params();
     cparams.use_gpu = false; // GPU (Vulkan, Adreno 810) war im Test unbrauchbar langsam
@@ -74,6 +76,19 @@ Java_de_braininger_app_erkennung_Whisper_erkennenNativ(JNIEnv *env, jobject, jst
         p.vad = true;
         p.vad_model_path = vad;
         p.vad_params = whisper_vad_default_params();
+
+        // Wörterbuch als Vorwissen (22.10.2026). whisper.cpp v1.9.5 nimmt den Prompt nur mit n_max_text_ctx > 0
+        // (src/whisper.cpp, Zeile 7285) und füllt sonst mit bereits erkanntem Text auf (Zeile 7301). Darum genau so
+        // viel Platz wie das Wörterbuch braucht: dann bleibt es bei jedem Abschnitt gleich, ohne Text-Rückkopplung.
+        std::vector<whisper_token> hinweis_tokens(256);
+        if (hinweis[0] != '\0') {
+            int n = whisper_tokenize(ctx, hinweis, hinweis_tokens.data(), (int) hinweis_tokens.size());
+            if (n > 0) {
+                p.initial_prompt = hinweis;
+                p.carry_initial_prompt = true;
+                p.n_max_text_ctx = n + 1;
+            }
+        }
 
         jsize n = env->GetArrayLength(jpcm);
         std::vector<float> pcm(n);
@@ -105,6 +120,7 @@ Java_de_braininger_app_erkennung_Whisper_erkennenNativ(JNIEnv *env, jobject, jst
     env->ReleaseStringUTFChars(jmodell, modell);
     env->ReleaseStringUTFChars(jvad, vad);
     env->ReleaseStringUTFChars(jsprache, sprache);
+    env->ReleaseStringUTFChars(jhinweis, hinweis);
     // als UTF-8-Bytes zurück: NewStringUTF versteht nur „modified UTF-8“ und scheitert an manchen Zeichen
     jbyteArray bytes = env->NewByteArray((jsize) aus.size());
     env->SetByteArrayRegion(bytes, 0, (jsize) aus.size(), (const jbyte *) aus.data());
