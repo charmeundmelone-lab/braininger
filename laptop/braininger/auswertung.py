@@ -119,9 +119,10 @@ Regeln:
   - „wer_holt“: Sagt jemand anderes als {name}, dass er die Sache selbst holt („Das Duschgel hole ich morgen“), steht
     sie trotzdem in „einkauf“, und „wer_holt“ ist der Name dieser Person, oder „jemand anderes“, wenn der Name
     unklar ist (nie S1, S2). Sonst leer.
-- Einkaufs-Ansage: Beginnt die Aufnahme mit „Einkauf“, „Einkaufsliste“ oder „Einkaufen“ und nennt danach nur Sachen
-  zum Kaufen, ist sie eine reine Einkaufs-Ansage: „nur_einkauf“ = true, „notizen“ und „aufgaben“ bleiben leer,
-  „kurz“ = „Einkauf: “ und die Sachen. Sonst ist „nur_einkauf“ = false.
+- Einkaufs-Ansage: Besteht die ganze Aufnahme nur aus Sachen zum Kaufen, mit oder ohne „Einkauf“, „Einkaufsliste“
+  oder „Einkaufen“ am Anfang (eine Aufzählung wie „Eier, Butter, Milch“ oder ein Satz wie „Das Brot ist alle“), ist
+  sie eine reine Einkaufs-Ansage: „nur_einkauf“ = true, „notizen“ und „aufgaben“ bleiben leer, „kurz“ = „Einkauf: “
+  und die Sachen. Kommt irgendetwas anderes vor (ein Gedanke, eine Aufgabe, ein Gefühl), ist „nur_einkauf“ = false.
 - Lebensbereich („bereich“, für die Farben in der App): familie = Familie & Haushalt, musik = Musik & Gigs,
   ich = Ich selbst (Gesundheit, Gefühle, eigenes Leben), projekte = Projekte & Ideen, finanzen = Finanzen Geschäft.
   Für die ganze Aufnahme der Bereich, um den es hauptsächlich geht; für jede Aufgabe ihr eigener Bereich.
