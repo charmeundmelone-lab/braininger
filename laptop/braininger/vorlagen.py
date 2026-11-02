@@ -86,7 +86,8 @@ VORLAGEN = [
     Vorlage(
         "haushalt", "Haushalt & Familie",
         "Gespräch über Familie, Kinder, Haushalt, Einkauf, Termine im Privatleben, Organisation zu Hause.",
-        "## Worum es geht\n## Abmachungen (wer, was, wann)\n## Einkauf / Besorgungen",
+        # Einkäufe stehen seit 2.11.2026 nur noch auf der Einkaufsliste (Feld „einkauf“), nicht in der Notiz
+        "## Worum es geht\n## Abmachungen (wer, was, wann)",
     ),
 ]
 

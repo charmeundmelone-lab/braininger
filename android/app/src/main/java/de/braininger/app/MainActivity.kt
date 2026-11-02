@@ -370,6 +370,7 @@ private fun Startseite(aktualisierung: Int, startReiter: String?, reiterGelesen:
         "aufgaben" -> Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(top = 16.dp)
         ) { AufgabenSeite() }
+        "einkauf" -> EinkaufSeite()
         "fragen" -> FrageSeite(zurueck = { reiter = "heute" }) { id -> vonFragen = true; offen = id }
         "heute" -> Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)
@@ -427,7 +428,7 @@ private fun Startseite(aktualisierung: Int, startReiter: String?, reiterGelesen:
                 )
             }
 
-            HeuteBereich(aktualisierung + abrufZaehler) { reiter = "aufgaben" }
+            HeuteBereich(aktualisierung + abrufZaehler, zuEinkauf = { reiter = "einkauf" }) { reiter = "aufgaben" }
         }
         else -> AufnahmenListe(
             aufnahmen, treffer, suche, { suche = it }, uploads, ergebnisse, auswahl, { auswahl = it },

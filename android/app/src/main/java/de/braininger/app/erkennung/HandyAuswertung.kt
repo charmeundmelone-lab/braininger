@@ -21,6 +21,7 @@ import de.braininger.app.Ablage
 import de.braininger.app.Aufnahme
 import de.braininger.app.AufgabenSpeicher
 import de.braininger.app.AufnahmeStatus
+import de.braininger.app.EinkaufSpeicher
 import de.braininger.app.MainActivity
 import de.braininger.app.Ordnung
 import de.braininger.app.R
@@ -127,7 +128,14 @@ object HandyAuswertung {
         )
     }
 
-    fun akkuReicht(context: Context): Boolean {
+    // Kurze Aufnahmen (z. B. Einkaufs-Ansagen per Taste) kosten nur Sekunden: sie laufen bis 10 % Akku
+    // (Grill Einkauf 2.11.2026, Frage 26), damit „Einkauf: …“ nicht stundenlang wartet
+    private const val KURZ_MS = 60_000L
+    private const val AKKU_GRENZE_KURZ = 10
+
+    fun akkuGrenze(a: Aufnahme): Int = if (a.dauerMs <= KURZ_MS) AKKU_GRENZE_KURZ else AKKU_GRENZE
+
+    fun akkuReicht(context: Context, grenze: Int = AKKU_GRENZE): Boolean {
         val status = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) ?: return true
         val laedt = status.getIntExtra(BatteryManager.EXTRA_STATUS, -1).let {
             it == BatteryManager.BATTERY_STATUS_CHARGING || it == BatteryManager.BATTERY_STATUS_FULL
@@ -135,7 +143,7 @@ object HandyAuswertung {
         val level = status.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
         val skala = status.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
         if (level < 0 || skala <= 0) return true
-        return laedt || level * 100 / skala >= AKKU_GRENZE
+        return laedt || level * 100 / skala >= grenze
     }
 
     fun offeneAufnahmen(context: Context): List<Aufnahme> {
@@ -295,11 +303,21 @@ object HandyAuswertung {
                 .put("notizen", d.getJSONArray("notizen"))
                 .put("wichtig", d.getJSONArray("wichtig"))
                 .put("aufgaben", d.getJSONArray("aufgaben"))
+                .put("einkauf", d.getJSONArray("einkauf"))
+                .put("nur_einkauf", d.optBoolean("nur_einkauf"))
                 .put("vorlage_hinweis", d.opt("vorlage_hinweis") ?: JSONObject.NULL)
                 .put("modell", de.braininger.app.claude.ClaudeAufruf.MODELL)
                 .put("kosten_usd", e.dollar)
             ergebnisSchreiben(a.ordner, j)
             phaseSetzen(a.ordner, "hochladen")
+            // Einkäufe gleich auf die Liste, ohne auf den Drive zu warten (im Laden gibt es oft kein Netz für den Upload)
+            val sachen = d.getJSONArray("einkauf").let { l -> (0 until l.length()).map { l.getJSONObject(it) } }
+            val neu = EinkaufSpeicher.ausErgebnis(context, a.ordner.name, sachen)
+            if (d.optBoolean("nur_einkauf")) {
+                // reine Einkaufs-Ansage: keine Notiz, keine Karte (Frage 13); im Papierkorb ist sie nach 30 Tagen weg
+                Ordnung.loeschen(context, listOf(a.ordner.name))
+                EinkaufSpeicher.ansageBestaetigen(context, neu)
+            }
             return true
         } catch (_: DeckelErreicht) {
             anLaptop(a, text, "Monatsdeckel für Claude erreicht, der Laptop schreibt die Notizen.")
@@ -350,7 +368,7 @@ object HandyAuswertung {
             if (p == "hochladen") {
                 phaseSetzen(a.ordner, "fertig")
                 Ergebnis.lesen(a.ordner)?.let { e ->
-                    fertig += a.ordner to e
+                    if (!e.nurEinkauf) fertig += a.ordner to e // Einkaufs-Ansage meldet ansageBestaetigen
                     if (e.vorschlaege.isNotEmpty()) {
                         AufgabenSpeicher.ausErgebnis(context, a.ordner.name,
                             e.vorschlaege.map { it.copy(id = "${a.ordner.name}#${it.id}", aufnahme = a.ordner.name) })
@@ -388,7 +406,7 @@ object HandyAuswertung {
         if (a.status == "laeuft" || !inArbeit(a.ordner)) return null
         return when {
             !textVorhanden(a.ordner) && !Modelle.bereit(context) -> "lädt Spracherkennung"
-            !textVorhanden(a.ordner) -> if (akkuReicht(context)) "Handy erkennt Text" else "wartet aufs Laden"
+            !textVorhanden(a.ordner) -> if (akkuReicht(context, akkuGrenze(a))) "Handy erkennt Text" else "wartet aufs Laden"
             else -> "Claude schreibt"
         }
     }
@@ -404,15 +422,15 @@ class ErkennungAuftrag(context: Context, params: WorkerParameters) : CoroutineWo
             Modelle.laden(ctx) // nach dem Laden stößt ModellLaden diese Arbeit wieder an
             return Result.success()
         }
-        if (!HandyAuswertung.akkuReicht(ctx)) {
+        if (offen.none { HandyAuswertung.akkuReicht(ctx, HandyAuswertung.akkuGrenze(it)) }) {
             HandyAuswertung.beimLadenAnstossen(ctx)
             return Result.success()
         }
         for (a in offen) {
             if (AufnahmeStatus.zustand.value.laeuft) return Result.retry() // nicht während einer Aufnahme rechnen
-            if (!HandyAuswertung.akkuReicht(ctx)) {
-                HandyAuswertung.beimLadenAnstossen(ctx)
-                return Result.success()
+            if (!HandyAuswertung.akkuReicht(ctx, HandyAuswertung.akkuGrenze(a))) {
+                HandyAuswertung.beimLadenAnstossen(ctx) // lange Aufnahmen warten aufs Laden, kurze laufen weiter
+                continue
             }
             try {
                 setForeground(ForegroundInfo(

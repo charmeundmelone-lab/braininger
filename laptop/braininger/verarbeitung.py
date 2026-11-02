@@ -207,6 +207,7 @@ class Bearbeitung:
                 status="fertig", schritt=None, fortschritt=1.0, meldung=None, weiter_ab=None,
                 kurz=antwort["kurz"], notizen=antwort["notizen"], wichtig=antwort.get("wichtig", []),
                 aufgaben=antwort["aufgaben"], vorlage_hinweis=antwort["vorlage_hinweis"], bereich=antwort.get("bereich", ""),
+                einkauf=antwort.get("einkauf", []), nur_einkauf=antwort.get("nur_einkauf", False),
             )
             self.zustand.status, self.zustand.meldung = "fertig", None
             log.info("%s: fertig, %d Notiz(en): %s, %d Aufgaben-Vorschläge", self.a.id, len(antwort["notizen"]),
@@ -300,7 +301,8 @@ class Bearbeitung:
                 self._notizen_ablegen(antwort["notizen"])
                 self.daten.update(kurz=antwort["kurz"], notizen=antwort["notizen"], wichtig=antwort.get("wichtig", []),
                                   aufgaben=antwort["aufgaben"], vorlage_hinweis=antwort["vorlage_hinweis"],
-                                  bereich=antwort.get("bereich", ""), quelle="laptop")
+                                  bereich=antwort.get("bereich", ""), einkauf=antwort.get("einkauf", []),
+                                  nur_einkauf=antwort.get("nur_einkauf", False), quelle="laptop")
             else:
                 raise ValueError(f"Unbekannter Auftrag {art!r}")
         except ClaudeLimitErreicht as e:

@@ -49,9 +49,11 @@ private const val MAX_PUNKTE = 5 // Frage 13: bis zu 5 Punkte, sonst wird es zu 
  * nach Tageszeit gemischt, höchstens 5 sichtbar. Darunter eine einzige Zeile für die Vorschläge.
  */
 @Composable
-fun HeuteBereich(aktualisierung: Int, zuAufgaben: () -> Unit) {
+fun HeuteBereich(aktualisierung: Int, zuEinkauf: () -> Unit, zuAufgaben: () -> Unit) {
     val context = LocalContext.current
     val aufgabenStand by AufgabenSpeicher.stand.collectAsState()
+    val einkaufStand by EinkaufSpeicher.stand.collectAsState()
+    val einkaufOffen = remember(einkaufStand) { EinkaufSpeicher.offene(context).isNotEmpty() }
     var kalenderStand by remember { mutableLongStateOf(0L) }
     var alle by remember { mutableStateOf(false) }
     var terminWahl by remember { mutableStateOf<Termin?>(null) }
@@ -105,6 +107,13 @@ fun HeuteBereich(aktualisierung: Int, zuAufgaben: () -> Unit) {
     if (liegt) {
         Row(Modifier.fillMaxWidth().padding(top = 10.dp).clickable(onClick = zuAufgaben).padding(vertical = 6.dp)) {
             Text("Von den letzten Tagen liegt noch etwas", color = Grau, fontSize = 14.sp, modifier = Modifier.weight(1f))
+            Text("›", color = Grau, fontSize = 18.sp)
+        }
+    }
+    // ruhiger Hinweis ohne Zahl (Grill Einkauf, Frage 19)
+    if (einkaufOffen) {
+        Row(Modifier.fillMaxWidth().padding(top = 10.dp).clickable(onClick = zuEinkauf).padding(vertical = 6.dp)) {
+            Text("Einkauf: etwas auf der Liste", color = Grau, fontSize = 14.sp, modifier = Modifier.weight(1f))
             Text("›", color = Grau, fontSize = 18.sp)
         }
     }

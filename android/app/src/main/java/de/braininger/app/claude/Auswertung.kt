@@ -98,7 +98,8 @@ object Auswertung {
     data class Ergebnis(val daten: JSONObject, val dollar: Double)
 
     /**
-     * Wertet eine Aufnahme aus. Rückgabe: geprüfte Felder kurz, notizen, aufgaben, vorlage_hinweis, wichtig, sprecher.
+     * Wertet eine Aufnahme aus. Rückgabe: geprüfte Felder kurz, notizen, aufgaben, einkauf, nur_einkauf,
+     * vorlage_hinweis, wichtig, sprecher.
      * Wirft ClaudeFehler, ClaudeSpaeter oder DeckelErreicht.
      */
     suspend fun auswerten(
@@ -191,6 +192,24 @@ object Auswertung {
                 .put("bereich", a.optString("bereich").takeIf { it in BEREICHE } ?: ""))
         }
 
+        // Einkaufsliste (Grill Einkauf 2.11.2026), geprüft wie am Laptop
+        val einkaufRoh = d.optJSONArray("einkauf") ?: JSONArray()
+        val einkauf = mutableListOf<JSONObject>()
+        for (i in 0 until einkaufRoh.length()) {
+            val e = einkaufRoh.optJSONObject(i) ?: continue
+            val sache = e.optString("sache").trim()
+            if (sache.isEmpty() || einkauf.any { it.optString("sache").equals(sache, ignoreCase = true) }) continue
+            einkauf += JSONObject().put("sache", sache).put("details", e.optString("details").trim())
+                .put("menge", e.optString("menge").trim()).put("laden", e.optString("laden").trim().ifBlank { "Supermarkt" })
+                .put("abteilung", e.optString("abteilung").takeIf { it in de.braininger.app.EinkaufSpeicher.ABTEILUNGEN } ?: "sonstiges")
+                .put("wer_holt", e.optString("wer_holt").trim())
+        }
+        val nurEinkauf = d.optBoolean("nur_einkauf") && einkauf.isNotEmpty()
+        if (nurEinkauf) {
+            notizen = emptyList()
+            while (aufgaben.length() > 0) aufgaben.remove(0)
+        }
+
         val hinweis = d.optJSONObject("vorlage_hinweis")
         val hinweisGilt = hinweis != null && hinweis.optString("vorlage") in v.kennungen && notizen.isNotEmpty() &&
             hinweis.optString("vorlage") != notizen[0].optString("vorlage")
@@ -200,6 +219,8 @@ object Auswertung {
             .put("kurz", d.optString("kurz"))
             .put("notizen", JSONArray(notizen))
             .put("aufgaben", aufgaben)
+            .put("einkauf", JSONArray(einkauf))
+            .put("nur_einkauf", nurEinkauf)
             .put("vorlage_hinweis", if (hinweisGilt) hinweis else JSONObject.NULL)
             .put("wichtig", d.optJSONArray("wichtig") ?: JSONArray())
             .put("sprecher", d.optJSONArray("sprecher") ?: JSONArray())

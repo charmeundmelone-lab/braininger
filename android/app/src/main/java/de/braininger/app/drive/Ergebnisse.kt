@@ -15,6 +15,7 @@ import androidx.work.WorkerParameters
 import de.braininger.app.Ablage
 import de.braininger.app.AufgabenAktion
 import de.braininger.app.AufgabenSpeicher
+import de.braininger.app.EinkaufSpeicher
 import de.braininger.app.Vorschlag
 import de.braininger.app.MainActivity
 import de.braininger.app.Ordnung
@@ -59,6 +60,10 @@ data class Ergebnis(
     val quelle: String? = null,
     /** Lebensbereich der Aufnahme (familie, musik, ich, projekte, finanzen) für die Farbe, sonst leer. */
     val bereich: String = "",
+    /** Einkäufe für die Einkaufsliste (sache, details, menge, laden, abteilung, wer_holt). */
+    val einkauf: List<JSONObject> = emptyList(),
+    /** Reine Einkaufs-Ansage („Einkauf: …“): keine Notiz, keine Karte. */
+    val nurEinkauf: Boolean = false,
 ) {
     val endgueltig get() = status == "fertig" || status == "fehler"
 
@@ -133,6 +138,8 @@ data class Ergebnis(
                     ?.let { it to hinweis.optString("grund") },
                 quelle = j.optString("quelle").takeUnless { j.isNull("quelle") || it.isBlank() },
                 bereich = j.optString("bereich").takeUnless { j.isNull("bereich") } ?: "",
+                einkauf = j.optJSONArray("einkauf")?.let { l -> (0 until l.length()).mapNotNull { l.optJSONObject(it) } }.orEmpty(),
+                nurEinkauf = j.optBoolean("nur_einkauf"),
             )
         } catch (_: Exception) {
             null
@@ -238,10 +245,19 @@ object ErgebnisAbruf {
             tmp.writeBytes(inhalt)
             tmp.renameTo(File(a.ordner, "ergebnis.json"))
             geaendert[id]?.let { zeitDatei.writeText(it) }
-            if (neu.endgueltig && alt?.status != neu.status) neuFertig += a.ordner to neu
+            val nurEinkaufNeu = neu.status == "fertig" && neu.nurEinkauf && alt?.status != "fertig"
+            if (neu.endgueltig && alt?.status != neu.status && !nurEinkaufNeu) neuFertig += a.ordner to neu
             if (neu.status == "fertig" && neu.vorschlaege.isNotEmpty()) {
                 AufgabenSpeicher.ausErgebnis(context, a.ordner.name,
                     neu.vorschlaege.map { it.copy(id = "${a.ordner.name}#${it.id}", aufnahme = a.ordner.name) })
+            }
+            // Einkäufe vom Laptop (ohne Claude-Schlüssel am Handy oder „Neu auswerten“): nur Neues kommt dazu
+            if (neu.status == "fertig" && a.ordner.name !in Ordnung.ausgeblendet(context) || nurEinkaufNeu) {
+                val neuAufListe = EinkaufSpeicher.ausErgebnis(context, a.ordner.name, neu.einkauf)
+                if (nurEinkaufNeu) {
+                    Ordnung.loeschen(context, listOf(a.ordner.name))
+                    EinkaufSpeicher.ansageBestaetigen(context, neuAufListe)
+                }
             }
         }
         return neuFertig
@@ -379,6 +395,7 @@ class ErgebnisAuftrag(context: Context, params: WorkerParameters) : CoroutineWor
         }
         AudioAufraeumen.aufraeumen(applicationContext)
         WarteHinweis.pruefen(applicationContext)
+        EinkaufSpeicher.nochNoetigPruefen(applicationContext)
         // Zusatzteile: ein Fehler hier darf die übrigen nicht aufhalten
         nebenbei { Uebersichten.abrufen(applicationContext) }
         nebenbei { if (Fragen.abrufen(applicationContext)) Fragen.benachrichtigen(applicationContext) }

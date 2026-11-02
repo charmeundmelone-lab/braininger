@@ -74,7 +74,8 @@ Regeln:
   - Geh den ganzen Text Satz für Satz durch. Jedes Vorhaben, an dem {name} beteiligt ist, wird ein Vorschlag:
     „ich muss“, „ich will“, „ich möchte“, „wir wollen“, „das muss geklärt/gemacht werden“, „ich sollte“, Pläne
     für bestimmte Tage („am Dienstag machen wir den Garten“), Zusagen, Antworten, Anrufe, Besorgungen, Termine,
-    die Vorbereitung brauchen. Mehrere Vorhaben in einem Satz werden mehrere Vorschläge.
+    die Vorbereitung brauchen. Mehrere Vorhaben in einem Satz werden mehrere Vorschläge. Alltags-Einkäufe sind
+    keine Aufgaben, sie stehen nur in „einkauf“ (siehe unten).
   - Sagt {name} ausdrücklich „Aufgabe“, „festhalten“, „nicht vergessen“ oder „wichtig“, wird alles Genannte ein
     Vorschlag, auch was er gleich jetzt tun will („Ich hab eine wichtige Aufgabe: jetzt kochen“).
   - Pläne mit „wir“, bei denen {name} dabei ist (Familie, Anna, die Kinder), und „das muss gemacht/geklärt werden“
@@ -95,6 +96,32 @@ Regeln:
     übernehmen. Sonst: früh/morgens 08:00, vormittags 10:00, mittags 12:00, nachmittags 15:00, abends 19:00,
     spät/nachts 21:00, nur ein Tag ohne Tageszeit 08:00, „diese Woche“ Freitag 10:00, „nächste Woche“ Montag
     10:00, „am Wochenende“ Samstag 10:00. Ohne jede Zeitangabe bleibt „frist“ leer.
+- Einkaufsliste („einkauf“): {name} führt eine Einkaufsliste für Alltags-Einkäufe: Lebensmittel, Getränke, Drogerie,
+  Haushalt und Kleinkram, den man in einem normalen Laden mitnimmt. Geh den ganzen Text durch und setz jede Sache,
+  die gekauft werden muss, in „einkauf“:
+  - ausdrücklich („muss ich kaufen“, „auf die Einkaufsliste“, „bring … mit“, „wir brauchen noch …“),
+  - nebenbei, ohne dass „kaufen“ fällt („Die Milch ist alle“, „Wir haben kein Klopapier mehr“, „Das Duschgel ist
+    leer“),
+  - Wünsche anderer im Haushalt („Smilla wünscht sich Erdbeeren“, „Anna hätte gern Hafermilch“).
+  Nicht hinein: was nur erwähnt, gegessen oder benutzt wird („Ich trink grad Kaffee“), schon Gekauftes („hab ich
+  geholt“), Zutaten aus Plänen, ohne dass gesagt wird, dass etwas fehlt („Samstag mach ich Lasagne“), und größere
+  Anschaffungen (Instrumente, Technik, Kleidung, Schuhe, Möbel, Fahrrad, Geschenke): die bleiben Aufgaben.
+  Einkäufe stehen nur in „einkauf“, nicht in den Notizen und nicht in „aufgaben“. Jede Sache nur einmal.
+  - „sache“: kurz, in der Grundform, wie sie im Laden heißt („Milch“, „Klopapier“, „Erdbeeren“).
+  - „details“: Sorte, Marke oder Größe, wenn genannt („laktosefrei, Weihenstephan“), sonst leer.
+  - „menge“: nur, wenn genannt („2 l“, „6 Stück“, „1 Packung“), sonst leer.
+  - „laden“: Nennt jemand einen Laden („bei dm“, „vom Bäcker“, „im Bauhaus“), genau diesen Namen. Sonst nach Art
+    der Sache: „Drogerie“ für Körperpflege, Kosmetik, Babypflege, Putz- und Waschmittel, Klopapier; „Apotheke“ für
+    Medikamente; „Baumarkt“ für Werkzeug, Schrauben, Farbe, Glühbirnen; alles andere „Supermarkt“.
+  - „abteilung“: wo die Sache im Supermarkt steht (obst_gemuese, brot, kuehlregal = Milch, Käse, Wurst, Eier;
+    fleisch_fisch, vorrat = Nudeln, Reis, Dosen, Mehl, Kaffee, Gewürze; suesses = Süßes und Knabbereien; getraenke;
+    tiefkuehl; drogerie_haushalt; sonstiges).
+  - „wer_holt“: Sagt jemand anderes als {name}, dass er die Sache selbst holt („Das Duschgel hole ich morgen“), steht
+    sie trotzdem in „einkauf“, und „wer_holt“ ist der Name dieser Person, oder „jemand anderes“, wenn der Name
+    unklar ist (nie S1, S2). Sonst leer.
+- Einkaufs-Ansage: Beginnt die Aufnahme mit „Einkauf“, „Einkaufsliste“ oder „Einkaufen“ und nennt danach nur Sachen
+  zum Kaufen, ist sie eine reine Einkaufs-Ansage: „nur_einkauf“ = true, „notizen“ und „aufgaben“ bleiben leer,
+  „kurz“ = „Einkauf: “ und die Sachen. Sonst ist „nur_einkauf“ = false.
 - Lebensbereich („bereich“, für die Farben in der App): familie = Familie & Haushalt, musik = Musik & Gigs,
   ich = Ich selbst (Gesundheit, Gefühle, eigenes Leben), projekte = Projekte & Ideen, finanzen = Finanzen Geschäft.
   Für die ganze Aufnahme der Bereich, um den es hauptsächlich geht; für jede Aufgabe ihr eigener Bereich.
@@ -103,6 +130,10 @@ Regeln:
 """
 
 BEREICHE = ["familie", "musik", "ich", "projekte", "finanzen"]
+
+# Feste Reihenfolge im Supermarkt (Grill Einkauf 2.11.2026, Frage 29); die App sortiert danach
+ABTEILUNGEN = ["obst_gemuese", "brot", "kuehlregal", "fleisch_fisch", "vorrat", "suesses", "getraenke", "tiefkuehl",
+               "drogerie_haushalt", "sonstiges"]
 
 SCHEMA = {
     "type": "object",
@@ -173,8 +204,27 @@ SCHEMA = {
             "required": ["vorlage", "grund"],
             "additionalProperties": False,
         },
+        "einkauf": {
+            "type": "array",
+            "description": "Alltags-Einkäufe für die Einkaufsliste (siehe Regeln).",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "sache": {"type": "string"},
+                    "details": {"type": "string"},
+                    "menge": {"type": "string"},
+                    "laden": {"type": "string"},
+                    "abteilung": {"type": "string", "enum": ABTEILUNGEN},
+                    "wer_holt": {"type": "string"},
+                },
+                "required": ["sache", "details", "menge", "laden", "abteilung", "wer_holt"],
+                "additionalProperties": False,
+            },
+        },
+        "nur_einkauf": {"type": "boolean", "description": "Reine Einkaufs-Ansage ohne Notiz (siehe Regeln)."},
     },
-    "required": ["bereich", "kurz", "notizen", "sprecher", "wichtig", "aufgaben", "vorlage_hinweis"],
+    "required": ["bereich", "kurz", "notizen", "sprecher", "wichtig", "aufgaben", "vorlage_hinweis", "einkauf",
+                 "nur_einkauf"],
     "additionalProperties": False,
 }
 
@@ -289,8 +339,22 @@ def auswerten(text: Text, modus: str, start: str, dauer_s: float, hinweise: list
         aufgaben.append({"art": a["art"], "text": text, "frist": frist, "unklar_wer": bool(a.get("unklar_wer")),
                          "bezug": a.get("bezug", "") if a["art"] != "neu" else "",
                          "bereich": a.get("bereich") if a.get("bereich") in BEREICHE else ""})
+    einkauf = []
+    for e in daten.get("einkauf", []):
+        sache = str(e.get("sache", "")).strip()
+        if not sache or any(sache.lower() == x["sache"].lower() for x in einkauf):
+            continue
+        einkauf.append({"sache": sache, "details": str(e.get("details", "")).strip(),
+                        "menge": str(e.get("menge", "")).strip(), "laden": str(e.get("laden", "")).strip() or "Supermarkt",
+                        "abteilung": e.get("abteilung") if e.get("abteilung") in ABTEILUNGEN else "sonstiges",
+                        "wer_holt": str(e.get("wer_holt", "")).strip()})
+    nur_einkauf = bool(daten.get("nur_einkauf")) and bool(einkauf)
+    if nur_einkauf:
+        notizen, aufgaben = [], []
     daten["notizen"] = notizen
     daten["aufgaben"] = aufgaben
+    daten["einkauf"] = einkauf
+    daten["nur_einkauf"] = nur_einkauf
     if daten.get("bereich") not in BEREICHE:
         daten["bereich"] = ""
 

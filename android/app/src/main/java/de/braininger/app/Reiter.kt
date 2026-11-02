@@ -34,11 +34,13 @@ import de.braininger.app.ui.Weiss
 
 /**
  * Reiter unten (Grill 20.10.2026, Frage 25; Muster nach Material Design 3 „Navigation bar“, 3–5 Ziele):
- * Heute / Aufnahmen / Aufgaben / Fragen. Jede Seite zeigt nur ihr Thema.
+ * Heute / Aufnahmen / Aufgaben / Einkauf / Fragen. Jede Seite zeigt nur ihr Thema. Einkauf seit 2.11.2026 (Grill
+ * Einkauf, Frage 9).
  */
 @Composable
 fun ReiterLeiste(aktiv: String, waehlen: (String) -> Unit) {
-    val reiter = listOf("heute" to "HEUTE", "aufnahmen" to "AUFNAHMEN", "aufgaben" to "AUFGABEN", "fragen" to "FRAGEN")
+    val reiter = listOf("heute" to "HEUTE", "aufnahmen" to "AUFNAHMEN", "aufgaben" to "AUFGABEN", "einkauf" to "EINKAUF",
+        "fragen" to "FRAGEN")
     Column(Modifier.fillMaxWidth().background(Schwarz)) {
         HorizontalDivider(color = Linie)
         Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -49,9 +51,10 @@ fun ReiterLeiste(aktiv: String, waehlen: (String) -> Unit) {
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    // immer fett und etwas größer: die Punktschrift ist dünn sonst schwer zu lesen
+                    // immer fett: die Punktschrift ist dünn sonst schwer zu lesen. 12 sp, damit fünf Reiter
+                    // (AUFNAHMEN ist der längste) nebeneinander passen
                     Text(name, fontFamily = Punktschrift, fontWeight = FontWeight.Bold,
-                         fontSize = 14.sp, color = if (an) Weiss else Grau, maxLines = 1)
+                         fontSize = 12.sp, color = if (an) Weiss else Grau, maxLines = 1, softWrap = false)
                     Spacer(Modifier.height(4.dp))
                     Spacer(Modifier.height(3.dp).fillMaxWidth(0.35f).background(if (an) Weiss else Schwarz))
                 }
