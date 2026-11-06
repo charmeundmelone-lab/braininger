@@ -31,7 +31,7 @@ WLAN ist bewusst aus: das Öffnen eines Ports im Netz hat der Auto-Mode blockier
 
 ## Prüfen per adb
 - Protokoll: `adb shell cat /sdcard/Android/data/de.braininger.lite/files/lite.log`
-- Laptop-Seite: `Braininger\daten\kompakt_empfang.log`
+- Laptop-Seite: `Braininger\daten\protokoll.txt` (Zeilen mit „Kompakt“)
 
 ## Getestet am 6.11.2026
 Aufnahme (eingebautes Mikro) → per USB zum Laptop → Whisper + Claude am Laptop → Ergebnis am Kompakt mit Aufgabe
