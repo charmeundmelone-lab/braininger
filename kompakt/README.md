@@ -14,8 +14,7 @@ keine Google-Dienste). Zweig `kompakt-lite`, gebaut von `.github/workflows/kompa
   doppelt = Start/Stopp, lang = Funkgerät. Jede Taste landet im Protokoll (zum Herausfinden, was der Kompakt meldet).
 - Warnt, sobald das Mikrofon 2 s lang nur Stille liefert, auch mitten in der Aufnahme (Offline+ trennt die Mikrofone
   per Hardware; ≥ 90 % der Werte praktisch 0, echte Aufnahmen haben höchstens ~7 %).
-- Schickt fertige Aufnahmen an den Laptop und holt die Ergebnisse ab: Kurzfassung, Notizen zum Aufklappen,
-  Aufgaben mit Frist, Einkauf. Nur lesen, kein Abhaken (noch).
+- Schickt fertige Aufnahmen an den Laptop und holt die Ergebnisse ab: Kurzfassung, Notizen, Aufgaben mit Frist, Einkauf.
 
 ## Warum der Laptop auswertet
 Whisper large-v3-turbo braucht auf dem Nothing Phone (Snapdragon) schon 0,75–0,9 × Aufnahmelänge. Der Helio A22 hat nur
