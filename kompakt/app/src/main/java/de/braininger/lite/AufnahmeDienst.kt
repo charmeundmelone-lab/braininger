@@ -31,6 +31,9 @@ class AufnahmeDienst : Service() {
             private set
         @Volatile var seit = 0L
             private set
+        /** Die laufende Aufnahme bekommt nur Stille (Offline+). */
+        @Volatile var stumm = false
+            private set
         private val beobachter = mutableSetOf<() -> Unit>()
 
         fun beobachten(f: () -> Unit) = synchronized(beobachter) { beobachter += f }
@@ -96,6 +99,7 @@ class AufnahmeDienst : Service() {
 
     private fun beginnen() {
         start = Date()
+        stumm = false
         vordergrund()
         val id = SimpleDateFormat("yyyy-MM-dd_HHmmss", Locale.ROOT).format(start) + "_gedanke"
         val o = File(Lager.ordner(this), id).apply { mkdirs() }
@@ -141,6 +145,35 @@ class AufnahmeDienst : Service() {
         seit = start.time
         Lager.protokoll(this, "Aufnahme gestartet $id ($mikroName)")
         melden()
+        android.os.Handler(mainLooper).postDelayed({ stummPruefen() }, 3000)
+    }
+
+    /**
+     * Der Offline+-Schalter des Kompakt trennt die Mikrofone per Hardware. Dann kommen nur Nullen an.
+     * Nach 3 Sekunden prüfen und deutlich warnen, statt still eine leere Aufnahme zu machen.
+     */
+    private fun stummPruefen() {
+        val r = recorder ?: return
+        Lager.protokoll(this, "Pegel nach 3 s: ${r.spitze}")
+        if (r.spitze >= 20) return
+        stumm = true
+        synchronized(this) {
+            info?.getJSONArray("hinweise")?.put("Mikrofon lieferte nur Stille (Offline+-Schalter an?).")
+        }
+        try {
+            getSystemService(android.os.Vibrator::class.java)?.vibrate(
+                android.os.VibrationEffect.createWaveform(longArrayOf(0, 500, 200, 500, 200, 500), -1)
+            )
+        } catch (_: Exception) {}
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(NotificationChannel("warnung", "Warnungen", NotificationManager.IMPORTANCE_HIGH))
+        nm.notify(3, Notification.Builder(this, "warnung")
+            .setSmallIcon(R.drawable.symbol)
+            .setContentTitle("Mikrofon ist stumm")
+            .setContentText("Offline+-Schalter an der Seite ausschalten, dann neu aufnehmen.")
+            .setAutoCancel(true)
+            .build())
+        melden()
     }
 
     private fun beenden() {
@@ -156,6 +189,7 @@ class AufnahmeDienst : Service() {
                 infoSchreiben()
             }
             laeuft = false
+            stumm = false
             seit = 0L
             try { sperre?.release() } catch (_: Exception) {}
             Lager.protokoll(this, "Aufnahme beendet ${ordner?.name}, ${(ende.time - start.time) / 1000} s")
@@ -188,6 +222,7 @@ class AufnahmeDienst : Service() {
             info?.put("dauer_s", (System.currentTimeMillis() - start.time) / 1000)
             infoSchreiben()
             laeuft = false
+            stumm = false
             melden()
         }
         try { sperre?.release() } catch (_: Exception) {}

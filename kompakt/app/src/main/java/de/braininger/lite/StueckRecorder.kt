@@ -42,6 +42,10 @@ class StueckRecorder(
     var stueckNummer = 0
         private set
 
+    /** Lauteste bisher gelesene Stelle (0..32767), nur bis 64 genau gezählt. Kompakt-Zusatz für die Stumm-Warnung. */
+    @Volatile var spitze = 0
+        private set
+
     fun start() {
         laeuft = true
         faden = Thread({ schleife() }, "braininger-aufnahme").apply {
@@ -149,6 +153,16 @@ class StueckRecorder(
                                 eingabeBeendet = true
                                 beiFehler("Das Mikrofon wurde von einer anderen App oder einem Anruf übernommen (Fehler $gelesen).")
                             } else {
+                                // Lauteste Stelle merken: bleibt sie bei fast 0, ist das Mikrofon getrennt (Offline+)
+                                if (spitze < 64) {
+                                    puffer.order(java.nio.ByteOrder.LITTLE_ENDIAN)
+                                    var i = 0
+                                    while (i + 1 < gelesen) {
+                                        val w = kotlin.math.abs(puffer.getShort(i).toInt())
+                                        if (w > spitze) spitze = w
+                                        i += 2
+                                    }
+                                }
                                 codec.queueInputBuffer(idx, 0, gelesen, zeitUs, 0)
                                 samplesGesamt += gelesen / 2
                             }

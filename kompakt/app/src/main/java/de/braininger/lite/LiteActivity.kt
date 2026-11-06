@@ -137,6 +137,10 @@ class LiteActivity : Activity() {
             }
         }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
+        if (laeuft && AufnahmeDienst.stumm) {
+            inhalt.addView(abstand(10))
+            inhalt.addView(text("Mikrofon ist stumm. Offline+-Schalter an der Seite ausschalten, dann neu aufnehmen.", 15f, fett = true))
+        }
         if (!TastenDienst.verbunden) {
             inhalt.addView(abstand(10))
             inhalt.addView(text("Taste am Mikrofon einrichten  ›", 14f).apply {
