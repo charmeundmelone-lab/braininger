@@ -160,6 +160,11 @@ def main() -> None:
         return
 
     log.info("Braininger %s gestartet. Eingang: %s", E.LAPTOP_VERSION, E.EINGANG)
+    try:
+        from . import kompakt  # Braininger Lite auf dem Mudita Kompakt (6.11.2026)
+        kompakt.im_hintergrund_starten()
+    except Exception:
+        log.exception("Kompakt-Empfang: Start fehlgeschlagen (Rest läuft normal)")
     woerterbuch.anlegen()
     nachgeholt = notizdateien.nachholen()
     if nachgeholt:
