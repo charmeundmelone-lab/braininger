@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Braininger Lite</string>
+    <string name="tasten_name">Braininger Lite: Tasten</string>
+    <string name="tasten_beschreibung">Startet und stoppt Aufnahmen mit der Taste am Headset oder Ansteckmikrofon (zweimal drücken, lang halten = Funkgerät). Sieht nur Tastendrücke, keine Bildschirminhalte.</string>
+</resources>
