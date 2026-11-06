@@ -42,9 +42,11 @@ class StueckRecorder(
     var stueckNummer = 0
         private set
 
-    /** Lauteste bisher gelesene Stelle (0..32767), nur bis 64 genau gezählt. Kompakt-Zusatz für die Stumm-Warnung. */
-    @Volatile var spitze = 0
+    /** Kompakt-Zusatz: wie viele Sekunden am Stück das Mikrofon nur Stille (praktisch Nullen) geliefert hat. */
+    @Volatile var stummSekunden = 0
         private set
+    private var fensterNull = 0
+    private var fensterWerte = 0
 
     fun start() {
         laeuft = true
@@ -153,15 +155,19 @@ class StueckRecorder(
                                 eingabeBeendet = true
                                 beiFehler("Das Mikrofon wurde von einer anderen App oder einem Anruf übernommen (Fehler $gelesen).")
                             } else {
-                                // Lauteste Stelle merken: bleibt sie bei fast 0, ist das Mikrofon getrennt (Offline+)
-                                if (spitze < 64) {
-                                    puffer.order(java.nio.ByteOrder.LITTLE_ENDIAN)
-                                    var i = 0
-                                    while (i + 1 < gelesen) {
-                                        val w = kotlin.math.abs(puffer.getShort(i).toInt())
-                                        if (w > spitze) spitze = w
-                                        i += 2
-                                    }
+                                // Kompakt: Offline+ trennt das Mikrofon, dann kommen fast nur Nullen (mit
+                                // vereinzeltem Knacken). Sekundenweise zählen, wie viele Werte praktisch 0 sind.
+                                puffer.order(java.nio.ByteOrder.LITTLE_ENDIAN)
+                                var i = 0
+                                while (i + 1 < gelesen) {
+                                    if (kotlin.math.abs(puffer.getShort(i).toInt()) <= 2) fensterNull++
+                                    fensterWerte++
+                                    i += 2
+                                }
+                                if (fensterWerte >= ABTASTRATE) {
+                                    stummSekunden = if (fensterNull * 100 >= fensterWerte * 90) stummSekunden + 1 else 0
+                                    fensterNull = 0
+                                    fensterWerte = 0
                                 }
                                 codec.queueInputBuffer(idx, 0, gelesen, zeitUs, 0)
                                 samplesGesamt += gelesen / 2

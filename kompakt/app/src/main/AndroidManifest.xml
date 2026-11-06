@@ -75,6 +75,7 @@
             android:permission="android.permission.WRITE_SECURE_SETTINGS">
             <intent-filter>
                 <action android:name="de.braininger.lite.EINRICHTEN" />
+                <action android:name="de.braininger.lite.ABGLEICHEN" />
             </intent-filter>
         </receiver>
     </application>

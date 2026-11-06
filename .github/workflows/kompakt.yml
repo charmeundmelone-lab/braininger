@@ -27,6 +27,13 @@ jobs:
         with:
           gradle-version: "8.11.1"
 
+      - name: Schrift Lato laden (wie in Muditas Apps, SIL Open Font License)
+        run: |
+          mkdir -p app/src/main/assets/fonts app/src/main/assets/lizenzen
+          curl -fsSL -o app/src/main/assets/fonts/Lato-Regular.ttf "https://github.com/google/fonts/raw/main/ofl/lato/Lato-Regular.ttf"
+          curl -fsSL -o app/src/main/assets/fonts/Lato-Bold.ttf "https://github.com/google/fonts/raw/main/ofl/lato/Lato-Bold.ttf"
+          curl -fsSL -o app/src/main/assets/lizenzen/Lato_OFL.txt "https://github.com/google/fonts/raw/main/ofl/lato/OFL.txt"
+
       - name: Signierschlüssel bereitstellen
         env:
           KEYSTORE_BASE64: ${{ secrets.BRAININGER_KEYSTORE_BASE64 }}

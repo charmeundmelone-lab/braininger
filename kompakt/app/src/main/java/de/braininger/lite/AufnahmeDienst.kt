@@ -145,20 +145,38 @@ class AufnahmeDienst : Service() {
         seit = start.time
         Lager.protokoll(this, "Aufnahme gestartet $id ($mikroName)")
         melden()
-        android.os.Handler(mainLooper).postDelayed({ stummPruefen() }, 3000)
+        Lager.protokoll(this, "Offline+: " + (Offline.an(this)?.let { if (it) "an" else "aus" } ?: "nicht lesbar"))
+        wache.postDelayed(stummWache, 1000)
     }
 
+    private val wache = android.os.Handler(android.os.Looper.getMainLooper())
+
     /**
-     * Der Offline+-Schalter des Kompakt trennt die Mikrofone per Hardware. Dann kommen nur Nullen an.
-     * Nach 3 Sekunden prüfen und deutlich warnen, statt still eine leere Aufnahme zu machen.
+     * Der Offline+-Schalter des Kompakt trennt die Mikrofone per Hardware. Dann kommen fast nur Nullen an, auch wenn
+     * man ihn mitten in der Aufnahme umlegt. Jede Sekunde prüfen: ab 2 stummen Sekunden deutlich warnen.
+     * Kommt wieder Ton, ist die Warnung erledigt und kann beim nächsten Mal erneut kommen.
      */
-    private fun stummPruefen() {
-        val r = recorder ?: return
-        Lager.protokoll(this, "Pegel nach 3 s: ${r.spitze}")
-        if (r.spitze >= 20) return
+    private val stummWache: Runnable = object : Runnable {
+        override fun run() {
+            val r = recorder ?: return
+            val jetztStumm = r.stummSekunden >= 2 || Offline.an(this@AufnahmeDienst) == true
+            if (jetztStumm && !stumm) warnen()
+            if (!jetztStumm && stumm) {
+                stumm = false
+                getSystemService(NotificationManager::class.java).cancel(3)
+                Lager.protokoll(this@AufnahmeDienst, "Mikrofon liefert wieder Ton")
+                melden()
+            }
+            wache.postDelayed(this, 1000)
+        }
+    }
+
+    private fun warnen() {
         stumm = true
+        val sekunde = (System.currentTimeMillis() - start.time) / 1000
+        Lager.protokoll(this, "Mikrofon stumm ab etwa Sekunde $sekunde")
         synchronized(this) {
-            info?.getJSONArray("hinweise")?.put("Mikrofon lieferte nur Stille (Offline+-Schalter an?).")
+            info?.getJSONArray("hinweise")?.put("Mikrofon lieferte ab etwa Sekunde $sekunde nur Stille (Offline+-Schalter an?).")
         }
         try {
             getSystemService(android.os.Vibrator::class.java)?.vibrate(
