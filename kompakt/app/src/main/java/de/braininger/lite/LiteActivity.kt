@@ -236,7 +236,7 @@ class LiteActivity : Activity() {
         zeile.addView(pfeil(R.drawable.pfeil_rechts, seite < seitenZahl - 1, +1), LinearLayout.LayoutParams(dp(96), dp(58)))
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            addView(View(this@LiteActivity).apply { setBackgroundColor(Color.BLACK) }, breit(dp(2)))
+            if (seitenZahl > 1) addView(View(this@LiteActivity).apply { setBackgroundColor(Color.BLACK) }, breit(dp(2))) else addView(View(this@LiteActivity), breit(dp(2)))
             addView(zeile)
         }
     }
@@ -300,10 +300,10 @@ class LiteActivity : Activity() {
 
     /** „heute 10:00“, „morgen“, „Sa 8.11.“ – Uhrzeit nur, wenn eine genannt ist. */
     private fun tag(d: Date, mitZeit: Boolean): String {
-        val k = Calendar.getInstance().apply { time = d }
-        val h = Calendar.getInstance()
-        val tage = ((k.apply { set(Calendar.HOUR_OF_DAY, 12) }.timeInMillis -
-            h.apply { set(Calendar.HOUR_OF_DAY, 12) }.timeInMillis) / 86_400_000L).toInt()
+        val zone = java.time.ZoneId.systemDefault()
+        val tage = java.time.temporal.ChronoUnit.DAYS.between(
+            java.time.LocalDate.now(zone), d.toInstant().atZone(zone).toLocalDate()
+        ).toInt()
         val wort = when (tage) {
             0 -> "heute"
             1 -> "morgen"
@@ -327,16 +327,16 @@ class LiteActivity : Activity() {
             if (laeuft) {
                 background = GradientDrawable().apply { cornerRadius = dpf(16f); setColor(Color.WHITE); setStroke(dp(3), Color.BLACK) }
                 addView(LinearLayout(this@LiteActivity).apply {
-                    gravity = Gravity.CENTER_VERTICAL
+                    gravity = Gravity.CENTER
                     addView(symbol(R.drawable.quadrat, 18))
                     addView(text("Stoppen", 26f, dick = true).apply { setPadding(dp(12), 0, 0, 0) })
                 })
                 val seit = SimpleDateFormat("HH:mm", Locale.GERMANY).format(Date(AufnahmeDienst.seit))
-                addView(text("Aufnahme läuft seit $seit", 16f).apply { setPadding(0, dp(8), 0, 0) })
+                addView(text("Aufnahme läuft seit $seit", 16f).apply { setPadding(0, dp(8), 0, 0); gravity = Gravity.CENTER })
             } else {
                 background = GradientDrawable().apply { cornerRadius = dpf(16f); setColor(Color.BLACK) }
                 addView(LinearLayout(this@LiteActivity).apply {
-                    gravity = Gravity.CENTER_VERTICAL
+                    gravity = Gravity.CENTER
                     addView(symbol(R.drawable.punkt, 18))
                     addView(text("Aufnehmen", 26f, dick = true, farbe = Color.WHITE).apply { setPadding(dp(12), 0, 0, 0) })
                 })
@@ -536,13 +536,24 @@ class LiteActivity : Activity() {
 
     private fun inhaltText(e: Eintrag): CharSequence {
         val b = SpannableStringBuilder()
-        fun absatz(t: CharSequence, groesse: Float, dick: Boolean = false, abstandVorher: Boolean = true) {
-            if (b.isNotEmpty() && abstandVorher) b.append("\n")
+        val messen = TextPaint().apply { typeface = normal; textSize = sp(18f) }
+        /** Kleiner Abstand zwischen Absätzen (eine niedrige Leerzeile statt einer ganzen). */
+        fun luecke() {
+            if (b.isEmpty()) return
+            val s = b.length
+            b.append("\n")
+            b.setSpan(AbsoluteSizeSpan(sp(9f).toInt()), s, b.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        /** Ein Absatz; einzug = hängender Einzug für Folgezeilen (Aufzählungen, Kästchen). */
+        fun absatz(t: CharSequence, groesse: Float, dick: Boolean = false, abstandVorher: Boolean = true, einzug: Int = 0) {
+            if (abstandVorher) luecke()
             val start = b.length
             b.append(t)
             b.setSpan(AbsoluteSizeSpan(sp(groesse).toInt()), start, b.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             b.setSpan(TypefaceSpan(if (dick) fett else normal), start, b.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             b.append("\n")
+            if (einzug > 0) b.setSpan(android.text.style.LeadingMarginSpan.Standard(0, einzug), start, b.length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         absatz(e.titel, 23f, dick = true, abstandVorher = false)
         absatz(listOfNotNull(e.dauerText().ifBlank { null }, e.stand).joinToString(" · ").ifBlank { " " }, 15f, abstandVorher = false)
@@ -577,6 +588,8 @@ class LiteActivity : Activity() {
                 b.setSpan(AbsoluteSizeSpan(sp(18f).toInt()), start, b.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 b.setSpan(TypefaceSpan(normal), start, b.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 b.append("\n")
+                b.setSpan(android.text.style.LeadingMarginSpan.Standard(0, sp(17f).toInt() + messen.measureText(" ").toInt()),
+                    start, b.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
         }
         val einkauf = erg.optJSONArray("einkauf")
@@ -591,15 +604,18 @@ class LiteActivity : Activity() {
             val inhalt = n.optString("inhalt")
             if (inhalt.isBlank()) continue
             if (notizen.length() > 1 || n.optString("titel") != e.titel) absatz(n.optString("titel"), 19f, dick = true)
-            else b.append("\n")
+            var ersteZeile = true
+            val punktEinzug = messen.measureText("•  ").toInt()
             for (z in inhalt.lines()) {
-                val zeile = z.trimEnd()
+                val zeile = z.trimEnd().replace("**", "")
                 when {
                     zeile.isBlank() -> {}
-                    zeile.trimStart().startsWith("#") ->
-                        absatz(zeile.trimStart('#', ' ').replace("**", ""), 18f, dick = true)
-                    else -> absatz(zeile.replace("**", "").replace(Regex("^\\s*[-*]\\s+"), "•  "), 18f, abstandVorher = false)
+                    zeile.trimStart().startsWith("#") -> absatz(zeile.trimStart('#', ' '), 18f, dick = true)
+                    Regex("^\\s*[-*]\\s+").containsMatchIn(zeile) ->
+                        absatz(zeile.replace(Regex("^\\s*[-*]\\s+"), "•  "), 18f, abstandVorher = ersteZeile, einzug = punktEinzug)
+                    else -> absatz(zeile, 18f, abstandVorher = true)
                 }
+                ersteZeile = false
             }
         }
         return b
