@@ -4,10 +4,16 @@ Kleine Schwester der Braininger-App für das Mudita Kompakt (E-Ink 480 × 800, H
 keine Google-Dienste). Zweig `kompakt-lite`, gebaut von `.github/workflows/kompakt.yml` (Artefakt `braininger-lite-apk`).
 
 ## Was sie macht
-- Großer Knopf AUFNEHMEN / STOPPEN, Aufnahme läuft als Vordergrund-Dienst weiter (gleicher Stück-Recorder wie die große App).
+- Optik wie Muditas eigene Apps (Books, CalmCast): Lato, nur reines Schwarz, dicke Linien, gepunktete Trenner.
+- Kein Scrollen: Startseite passt immer ganz auf den Bildschirm (Knopf, Aufgaben, Einkauf, Aufnahmen, Laptop-Zeile).
+  Alles andere ist in Seiten geteilt, Blättern mit Pfeilen unten oder Lautstärketasten. Eine Aufnahme liest sich wie
+  ein Buch (StaticLayout mit deutscher Silbentrennung, an Zeilengrenzen in Seiten geschnitten).
+- Aufgaben und Einkauf sammeln sich aus allen Ergebnissen, abhaken am Kompakt (nur lokal gespeichert).
+- Großer Knopf Aufnehmen / Stoppen, Aufnahme läuft als Vordergrund-Dienst weiter (gleicher Stück-Recorder wie die große App).
 - Taste am Headset/Ansteckmikrofon (HEADSETHOOK, PLAY/PAUSE) über die Bedienungshilfe „Braininger Lite: Tasten“:
   doppelt = Start/Stopp, lang = Funkgerät. Jede Taste landet im Protokoll (zum Herausfinden, was der Kompakt meldet).
-- Warnt nach 3 s, wenn das Mikrofon nur Stille liefert (Offline+-Schalter trennt die Mikrofone per Hardware).
+- Warnt, sobald das Mikrofon 2 s lang nur Stille liefert, auch mitten in der Aufnahme (Offline+ trennt die Mikrofone
+  per Hardware; ≥ 90 % der Werte praktisch 0, echte Aufnahmen haben höchstens ~7 %).
 - Schickt fertige Aufnahmen an den Laptop und holt die Ergebnisse ab: Kurzfassung, Notizen zum Aufklappen,
   Aufgaben mit Frist, Einkauf. Nur lesen, kein Abhaken (noch).
 
@@ -17,12 +23,12 @@ vier langsame A53-Kerne: eine Stunde Aufnahme würde mehrere Stunden rechnen und
 Google-Dienste nicht wie in der großen App. Deshalb: Kompakt nimmt nur auf, der Laptop macht alles wie in Stufe 1.
 
 ## Weg zum Laptop
-`laptop/kompakt_empfang.py` nimmt Aufnahmen an (Port 8765, Schlüssel im Windows-Tresor „Braininger/kompakt_schluessel“)
-und legt sie in den Drive-Eingang ohne `"auswertung": "handy"`. Das normale Laptop-Programm wertet sie dann ganz aus.
-- USB-Kabel: `adb reverse tcp:8765 tcp:8765` (macht `kompakt_empfang.py einrichten`), App nutzt 127.0.0.1:8765.
-- WLAN: Empfang mit `--wlan` starten. Windows fragt einmal nach der Firewall, Jan klickt selbst. Die Laptop-Adresse
-  bekommt die App bei `einrichten` per adb (aktuell 192.168.2.30). Ändert der Router die Adresse, `einrichten` erneut.
-- Autostart: `7_Kompakt_Empfang_einrichten.bat` im Braininger-Ordner (Jan startet sie selbst).
+Per USB-Kabel. Der Empfang läuft im Laptop-Programm mit (`laptop/braininger/kompakt.py`, nur 127.0.0.1:8765, Schlüssel im
+Windows-Tresor „Braininger/kompakt_schluessel“). Die Kabelwache öffnet `adb reverse`, sobald der Kompakt angesteckt ist,
+und stößt den Abgleich in der App an (gleich und dann jede Minute). Die App gleicht zusätzlich beim Laden alle 15 Minuten ab.
+Aufnahmen landen im Drive-Eingang ohne `"auswertung": "handy"`, das normale Laptop-Programm wertet sie ganz aus.
+Einmalig nach Neuinstallation der App: `python kompakt_empfang.py einrichten` (gibt den Schlüssel per adb).
+WLAN ist bewusst aus: das Öffnen eines Ports im Netz hat der Auto-Mode blockiert, Jan müsste es selbst freigeben.
 
 ## Prüfen per adb
 - Protokoll: `adb shell cat /sdcard/Android/data/de.braininger.lite/files/lite.log`
