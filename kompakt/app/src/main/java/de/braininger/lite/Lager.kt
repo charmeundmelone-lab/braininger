@@ -62,10 +62,13 @@ object Lager {
 
     fun iso(d: Date): String = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.ROOT).format(d)
 
-    /** Kleines Protokoll in files/lite.log (Tasten, Senden, Fehler), damit Claude per adb nachsehen kann. */
+    /**
+     * Kleines Protokoll (Tasten, Senden, Fehler) in /sdcard/Android/data/de.braininger.lite/files/lite.log:
+     * dort kann Claude es per adb lesen. Es enthält keine Aufnahme-Inhalte.
+     */
     fun protokoll(c: Context, text: String) {
         try {
-            val f = File(c.filesDir, "lite.log")
+            val f = File(c.getExternalFilesDir(null) ?: c.filesDir, "lite.log")
             if (f.length() > 200_000) f.delete()
             f.appendText(SimpleDateFormat("dd.MM. HH:mm:ss", Locale.ROOT).format(Date()) + " " + text + "\n")
         } catch (_: Exception) {

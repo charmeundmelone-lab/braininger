@@ -20,7 +20,7 @@ object Abgleich {
             val schluessel = Lager.schluessel(c)
             if (schluessel.isBlank()) return "Noch nicht mit dem Laptop eingerichtet"
             val basis = Lager.adressen(c).firstOrNull { erreichbar(it, schluessel) }
-                ?: return "Laptop nicht erreichbar"
+                ?: return "Laptop nicht erreichbar".also { Lager.protokoll(c, it) }
             Lager.kontaktMerken(c)
             var gesendet = 0
             var geholt = 0
