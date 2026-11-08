@@ -28,6 +28,12 @@ keine Google-Dienste). Zweig `kompakt-lite`, gebaut von `.github/workflows/kompa
   Gedanken führen“ und „Wieder als Nachtrag anhängen“ sind nur am Kompakt vermerkt (Einstellung `los:<id>`).
 - Einkauf: Supermarkt nach Gängen, andere Läden (dm, Bäcker) unter ihrem Namen. Der Laptop liefert Abteilungen als
   Kennung (`kuehlregal`); bis 8.11. landete deshalb alles unter „Sonstiges“.
+- Unten auf der Einkaufsseite fest: „Im Laden“ (nur Offenes, groß, Bildschirm bleibt an, Antippen legt still in den
+  Korb, unten „Rückgängig: …“) und „Teilen“ (Text nach Laden und Gang über das Android-Teilen-Fenster, Jan wählt
+  selbst z. B. Anna in WhatsApp; nichts geht automatisch raus).
+- Reine Einkaufs-Ansagen („Einkauf: Bananen, …“, keine Aufgabe) stehen im Tagebuch als leise Zeile
+  „23:29 Einkauf: Bananen, Vollkornbrot, Zahnpasta“ und machen aus einem Tag kein Kapitel. Der Laptop legt für
+  solche Ansagen schon keine Notiz an.
 - Markierung: Lauter kurz drücken, während eine Aufnahme läuft = „das war wichtig“ (ein kurzes Tippen als Vibration).
   Landet als Sekunde in `info.json → markierungen`; das Laptop-Programm gibt sie Claude schon mit.
 - Einkauf nach Abteilungen im Laden, die ganze Zeile hakt ab, „Abgehakte entfernen“.
