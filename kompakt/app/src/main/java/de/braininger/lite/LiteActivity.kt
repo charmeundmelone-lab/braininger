@@ -450,8 +450,7 @@ class LiteActivity : Activity() {
                 background = GradientDrawable().apply { cornerRadius = dpf(8f); setColor(Color.BLACK) }
             }, breit().apply { setMargins(dp(16), dp(10), dp(16), 0) })
         } else {
-            spalte.addView(text(if (laeuft) "Stoppen auch mit der Lauter-Taste: 1 Sekunde halten"
-                else "Oder Lauter-Taste 1 Sekunde halten, auch bei dunklem Bildschirm", 15f).apply {
+            spalte.addView(text("Oder: Lauter-Taste 1 Sekunde halten", 15f).apply {
                 gravity = Gravity.CENTER
                 setPadding(dp(16), dp(8), dp(16), 0)
             }, breit())
@@ -532,12 +531,28 @@ class LiteActivity : Activity() {
     // ----- Aufgaben
 
     /**
-     * Alle Aufgaben kompakt, je eine Zeile, nach Tagen gruppiert, damit möglichst alles auf eine Seite passt.
+     * Alle Aufgaben kompakt, nach Tagen gruppiert, damit möglichst alles auf eine Seite passt: zweizeilig, wenn das
+     * auf eine Seite passt (dann ist fast jede Aufgabe ganz lesbar), sonst einzeilig.
      * Antippen klappt eine Aufgabe auf: ganzer Text, Frist, aus welcher Aufnahme. Das Kästchen hakt ab.
      */
     private fun aufgabenSeite(alle: List<Eintrag>) {
         val liste = Daten.aufgaben(this, alle)
         if (liste.none { it.schluessel == offeneAufgabe }) offeneAufgabe = null
+        val offenZahl = liste.count { !it.erledigt }
+        rahmen(kopf("Aufgaben", if (offenZahl > 0) "$offenZahl offen" else null, zurueckPfeil = true)) { breite, hoehe ->
+            var (zeilen, fokus) = aufgabenZeilen(liste, 2)
+            val gesamt = zeilen.sumOf {
+                it.measure(View.MeasureSpec.makeMeasureSpec(breite, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                it.measuredHeight
+            }
+            if (gesamt > hoehe) aufgabenZeilen(liste, 1).let { zeilen = it.first; fokus = it.second }
+            liste(zeilen, "Nichts offen. Schön.", fokus)(breite, hoehe)
+        }
+    }
+
+    /** Zeilen samt Zwischenüberschriften; zweites Ergebnis ist die aufgeklappte Zeile. */
+    private fun aufgabenZeilen(liste: List<Aufgabe>, maxZeilen: Int): Pair<List<View>, View?> {
         val zeilen = mutableListOf<View>()
         var fokus: View? = null
         var letzteGruppe: String? = null
@@ -563,13 +578,11 @@ class LiteActivity : Activity() {
                 else -> null
             }
             val offen = a.schluessel == offeneAufgabe
-            val z = aufgabeZeile(a, rechts, offen)
+            val z = aufgabeZeile(a, rechts, offen, maxZeilen)
             if (offen) fokus = z
             zeilen += z
         }
-        val offenZahl = liste.count { !it.erledigt }
-        rahmen(kopf("Aufgaben", if (offenZahl > 0) "$offenZahl offen" else null, zurueckPfeil = true),
-            liste(zeilen, "Nichts offen. Schön.", fokus))
+        return zeilen to fokus
     }
 
     /** Kleine Zwischenüberschrift in Großbuchstaben, z. B. HEUTE. */
@@ -587,7 +600,7 @@ class LiteActivity : Activity() {
         setOnClickListener { umschalten() }
     }
 
-    private fun aufgabeZeile(a: Aufgabe, rechts: String?, offen: Boolean): View {
+    private fun aufgabeZeile(a: Aufgabe, rechts: String?, offen: Boolean, maxZeilen: Int): View {
         val oben = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         oben.addView(kaestchen(a.erledigt) {
             Daten.aufgabeUmschalten(this, a)
@@ -598,7 +611,7 @@ class LiteActivity : Activity() {
             setPadding(0, dp(11), 0, if (offen) dp(4) else dp(11))
             addView(text(a.text, 19f, dick = offen).apply {
                 if (!offen) {
-                    maxLines = 1
+                    maxLines = maxZeilen
                     ellipsize = TextUtils.TruncateAt.END
                 }
                 if (a.erledigt) paintFlags = paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
@@ -625,9 +638,7 @@ class LiteActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(44), 0, dp(4), dp(12))
             val f = a.frist
-            addView(text(if (f != null) "bis " + tag(f, mitZeit(f)) else "ohne Termin", 16f).apply {
-                setPadding(0, dp(4), 0, 0)
-            })
+            if (f != null) addView(text("bis " + tag(f, mitZeit(f)), 16f).apply { setPadding(0, dp(4), 0, 0) })
             if (a.bezug.isNotBlank()) addView(text("Gehört zu: " + a.bezug, 16f).apply { setPadding(0, dp(6), 0, 0) })
             addView(LinearLayout(this@LiteActivity).apply {
                 gravity = Gravity.CENTER_VERTICAL
@@ -655,9 +666,11 @@ class LiteActivity : Activity() {
         val sachen = Daten.einkauf(this, alle)
         val zeilen = mutableListOf<View>()
         var letzteGruppe: String? = null
+        fun gruppeVon(s: Sache) = if (s.abgehakt) "Im Korb" else Daten.ABTEILUNGEN.getOrElse(s.abteilung) { "Sonstiges" }
+        val mitUeberschriften = sachen.map { gruppeVon(it) }.distinct().size > 1 // eine einzige Gruppe braucht keine
         for (s in sachen) {
-            val gruppe = if (s.abgehakt) "Im Korb" else Daten.ABTEILUNGEN.getOrElse(s.abteilung) { "Sonstiges" }
-            if (gruppe != letzteGruppe) {
+            val gruppe = gruppeVon(s)
+            if (mitUeberschriften && gruppe != letzteGruppe) {
                 zeilen += ueberschrift(gruppe)
                 letzteGruppe = gruppe
             }
