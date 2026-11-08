@@ -57,7 +57,10 @@ class Eintrag(val ordner: File, val info: JSONObject, val roh: JSONObject?) {
     }
 }
 
-class Aufgabe(val schluessel: String, val text: String, val frist: Date?, val erledigt: Boolean)
+class Aufgabe(
+    val schluessel: String, val text: String, val frist: Date?, val erledigt: Boolean,
+    val bezug: String, val quelle: Eintrag,
+)
 class Sache(val schluessel: String, val sache: String, val details: String, val abteilung: Int, val abgehakt: Boolean)
 
 /**
@@ -69,7 +72,7 @@ object Daten {
     private const val PREFS = "lite_haken"
 
     // gleiche Reihenfolge wie im Laden (Grill Einkauf 2.11.2026)
-    private val ABTEILUNGEN = listOf(
+    val ABTEILUNGEN = listOf(
         "Obst & Gemüse", "Brot", "Kühlregal", "Fleisch & Fisch", "Vorrat", "Süßes & Knabbern",
         "Getränke", "Tiefkühl", "Drogerie & Haushalt", "Sonstiges",
     )
@@ -96,7 +99,8 @@ object Daten {
                         SimpleDateFormat(if (it.length >= 16) "yyyy-MM-dd'T'HH:mm" else "yyyy-MM-dd", Locale.ROOT).parse(it.take(16))
                     } catch (_: Exception) { null }
                 }
-                liste += Aufgabe(s, x.optString("text"), frist, erledigtAm != null)
+                val bezug = x.optString("bezug").takeIf { it.isNotBlank() && it != "null" }.orEmpty()
+                liste += Aufgabe(s, x.optString("text"), frist, erledigtAm != null, bezug, e)
             }
         }
         return liste.sortedWith(compareBy<Aufgabe>({ it.erledigt }, { it.frist == null }, { it.frist }))

@@ -2,7 +2,9 @@ package de.braininger.lite
 
 import android.Manifest
 import android.app.Activity
+import android.app.ActivityManager
 import android.content.Context
+import android.media.AudioManager
 import android.content.pm.PackageManager
 import android.graphics.Canvas
 import android.graphics.Color
@@ -43,14 +45,28 @@ import java.util.Locale
  */
 class LiteActivity : Activity() {
 
+    private companion object {
+        const val UEBERSCHRIFT = "ueberschrift"
+    }
+
     private enum class Ansicht { START, AUFGABEN, EINKAUF, AUFNAHMEN, AUFNAHME }
 
     private var ansicht = Ansicht.START
     private var seite = 0
     private var seitenZahl = 1
-    private var aufnahmenSeite = 0 // damit „zurück“ aus einer Aufnahme auf der gleichen Listenseite landet
+    // damit „zurück“ aus einer Aufnahme dort landet, wo man herkam (Liste oder Aufgaben, gleiche Seite)
+    private var zurueckZu = Ansicht.AUFNAHMEN
+    private var zurueckSeite = 0
     private var gewaehlt: String? = null
+    private var offeneAufgabe: String? = null // aufgeklappte Aufgabe
     private var abgleichLaeuft = false
+    private var lauterGehalten = false
+    private val lauterHalten = Runnable {
+        lauterGehalten = true
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            AufnahmeDienst.umschalten(this)
+        } else requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1)
+    }
 
     private lateinit var wurzel: FrameLayout
     private val neuZeichnen: () -> Unit = { runOnUiThread { if (ansicht == Ansicht.START) zeichnen() } }
@@ -85,16 +101,20 @@ class LiteActivity : Activity() {
     override fun onResume() {
         super.onResume()
         AufnahmeDienst.beobachten(neuZeichnen)
+        // Aus der sichtbaren App gestartet bekommt der Dienst sicher das Mikrofon, auch später bei dunklem Bildschirm.
+        AufnahmeDienst.bereitHalten(this)
         wurzel.post { zeichnen() }
         abgleichen()
     }
 
     override fun onPause() {
         AufnahmeDienst.nichtMehr(neuZeichnen)
+        wurzel.removeCallbacks(lauterHalten)
         super.onPause()
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        AufnahmeDienst.bereitHalten(this)
         zeichnen()
     }
 
@@ -103,15 +123,50 @@ class LiteActivity : Activity() {
         if (ansicht == Ansicht.START) super.onBackPressed() else zurueck()
     }
 
-    /** Lautstärketasten blättern (wie in Books), aber nur auf Seiten mit mehr als einer Seite. */
+    private fun blaetterbar() = ansicht != Ansicht.START && seitenZahl > 1
+
+    /**
+     * Lauter-Taste 1 Sekunde halten = Aufnahme an/aus (wie überall auf dem Kompakt).
+     * Kurz drücken: blättern wie in Books (Leiser = weiter, Lauter = zurück), auf der Startseite normale Lautstärke.
+     */
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        if (ansicht != Ansicht.START && seitenZahl > 1) {
-            when (keyCode) {
-                KeyEvent.KEYCODE_VOLUME_DOWN -> { blaettern(+1); return true }
-                KeyEvent.KEYCODE_VOLUME_UP -> { blaettern(-1); return true }
+        when (keyCode) {
+            KeyEvent.KEYCODE_VOLUME_UP -> {
+                if (event.repeatCount == 0) {
+                    lauterGehalten = false
+                    wurzel.postDelayed(lauterHalten, AufnahmeDienst.HALTEN_MS)
+                }
+                return true
+            }
+            KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                if (event.repeatCount == 0) {
+                    if (blaetterbar()) blaettern(+1) else lautstaerke(AudioManager.ADJUST_LOWER)
+                }
+                return true
             }
         }
         return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        when (keyCode) {
+            KeyEvent.KEYCODE_VOLUME_UP -> {
+                wurzel.removeCallbacks(lauterHalten)
+                if (!lauterGehalten) {
+                    if (blaetterbar()) blaettern(-1) else lautstaerke(AudioManager.ADJUST_RAISE)
+                }
+                lauterGehalten = false
+                return true
+            }
+            KeyEvent.KEYCODE_VOLUME_DOWN -> return true
+        }
+        return super.onKeyUp(keyCode, event)
+    }
+
+    private fun lautstaerke(richtung: Int) {
+        val audio = getSystemService(AudioManager::class.java)
+        val strom = if (audio.isMusicActive) AudioManager.STREAM_MUSIC else AudioManager.STREAM_RING
+        try { audio.adjustStreamVolume(strom, richtung, AudioManager.FLAG_SHOW_UI) } catch (_: Exception) {}
     }
 
     private fun abgleichen() {
@@ -127,20 +182,24 @@ class LiteActivity : Activity() {
     }
 
     private fun oeffnen(a: Ansicht, id: String? = null) {
-        if (ansicht == Ansicht.AUFNAHMEN) aufnahmenSeite = seite
+        if (a == Ansicht.AUFNAHME) {
+            zurueckZu = ansicht
+            zurueckSeite = seite
+        }
         ansicht = a
         gewaehlt = id
-        seite = if (a == Ansicht.AUFNAHMEN) aufnahmenSeite else 0
+        seite = 0
         zeichnen()
     }
 
     private fun zurueck() {
         if (ansicht == Ansicht.AUFNAHME) {
-            ansicht = Ansicht.AUFNAHMEN
-            seite = aufnahmenSeite
+            ansicht = zurueckZu
+            seite = zurueckSeite
         } else {
             ansicht = Ansicht.START
             seite = 0
+            offeneAufgabe = null
         }
         zeichnen()
     }
@@ -259,8 +318,12 @@ class LiteActivity : Activity() {
         fussPlatz.addView(fuss())
     }
 
-    /** Teilt fertige Zeilen-Views auf Seiten auf (gemessen, nicht geschätzt) und zeigt die aktuelle. */
-    private fun liste(zeilen: List<View>, leer: String): (Int, Int) -> View = { breite, hoehe ->
+    /**
+     * Teilt fertige Zeilen-Views auf Seiten auf (gemessen, nicht geschätzt) und zeigt die aktuelle.
+     * Eine Überschrift bleibt nie allein unten auf einer Seite. Mit [fokus] springt die Seite dorthin, wo diese Zeile
+     * steht (z. B. eine gerade aufgeklappte Aufgabe, die nicht mehr auf die alte Seite passt).
+     */
+    private fun liste(zeilen: List<View>, leer: String, fokus: View? = null): (Int, Int) -> View = { breite, hoehe ->
         val seiten = mutableListOf<MutableList<View>>(mutableListOf())
         var belegt = 0
         for (z in zeilen) {
@@ -268,13 +331,17 @@ class LiteActivity : Activity() {
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
             val h = z.measuredHeight
             if (belegt + h > hoehe && seiten.last().isNotEmpty()) {
-                seiten += mutableListOf<View>()
-                belegt = 0
+                val alt = seiten.last()
+                val neu = mutableListOf<View>()
+                if (alt.size > 1 && alt.last().tag == UEBERSCHRIFT) neu += alt.removeAt(alt.size - 1)
+                seiten += neu
+                belegt = neu.sumOf { it.measuredHeight }
             }
             seiten.last() += z
             belegt += h
         }
         seitenZahl = seiten.size
+        if (fokus != null) seiten.indexOfFirst { fokus in it }.takeIf { it >= 0 }?.let { seite = it }
         seite = seite.coerceIn(0, seitenZahl - 1)
         LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -298,13 +365,17 @@ class LiteActivity : Activity() {
         }
     }
 
-    /** „heute 10:00“, „morgen“, „Sa 8.11.“ – Uhrzeit nur, wenn eine genannt ist. */
-    private fun tag(d: Date, mitZeit: Boolean): String {
+    /** Kalendertage von heute bis d (0 = heute, −1 = gestern). */
+    private fun tageBis(d: Date): Int {
         val zone = java.time.ZoneId.systemDefault()
-        val tage = java.time.temporal.ChronoUnit.DAYS.between(
+        return java.time.temporal.ChronoUnit.DAYS.between(
             java.time.LocalDate.now(zone), d.toInstant().atZone(zone).toLocalDate()
         ).toInt()
-        val wort = when (tage) {
+    }
+
+    /** „heute 10:00“, „morgen“, „Sa 8.11.“ – Uhrzeit nur, wenn eine genannt ist. */
+    private fun tag(d: Date, mitZeit: Boolean): String {
+        val wort = when (tageBis(d)) {
             0 -> "heute"
             1 -> "morgen"
             -1 -> "gestern"
@@ -349,13 +420,22 @@ class LiteActivity : Activity() {
             }
         }
         spalte.addView(knopf, breit(dp(118)).apply { setMargins(dp(16), dp(16), dp(16), 0) })
+        spalte.addView(text(if (laeuft) "Stoppen auch mit der Lauter-Taste: 1 Sekunde halten"
+            else "Oder Lauter-Taste 1 Sekunde halten, auch bei dunklem Bildschirm", 15f).apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(16), dp(8), dp(16), 0)
+        }, breit())
 
         // Warnung, schwarz hinterlegt
+        val eingeschraenkt = getSystemService(ActivityManager::class.java).isBackgroundRestricted
         val warnung = when {
+            laeuft && AufnahmeDienst.gesperrt -> "Android hat das Mikrofon gesperrt. Bitte stoppen und neu aufnehmen."
             laeuft && AufnahmeDienst.stumm -> "Mikrofon ist stumm. Offline+ an der Seite ausschalten."
             !laeuft && Offline.an(this) == true -> "Offline+ ist an. Das Mikrofon ist getrennt."
             checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED ->
                 "Mikrofon nicht erlaubt. Knopf antippen, dann „Zulassen“."
+            eingeschraenkt -> "Akku-Sparen bremst Braininger: Aufnahmen brechen bei dunklem Bildschirm ab. " +
+                "Kabel an den Laptop, dann ist es behoben."
             else -> null
         }
         if (warnung != null) {
@@ -368,9 +448,11 @@ class LiteActivity : Activity() {
         // Drei große Einträge
         val aufgaben = Daten.aufgaben(this, alle)
         val offen = aufgaben.filter { !it.erledigt }
-        val naechste = offen.firstOrNull { it.frist != null }?.frist
+        val ueberfaellig = offen.count { a -> a.frist?.let { tageBis(it) < 0 } == true }
+        val naechste = offen.firstOrNull { a -> a.frist?.let { tageBis(it) >= 0 } == true }?.frist
         val aufgabenText = when {
             offen.isEmpty() -> "Nichts offen"
+            ueberfaellig > 0 -> "${offen.size} offen · $ueberfaellig überfällig"
             naechste != null -> "${offen.size} offen · als Nächstes ${tag(naechste, mitZeit(naechste))}"
             else -> "${offen.size} offen"
         }
@@ -437,27 +519,141 @@ class LiteActivity : Activity() {
 
     // ----- Aufgaben
 
+    /**
+     * Alle Aufgaben kompakt, je eine Zeile, nach Tagen gruppiert, damit möglichst alles auf eine Seite passt.
+     * Antippen klappt eine Aufgabe auf: ganzer Text, Frist, aus welcher Aufnahme. Das Kästchen hakt ab.
+     */
     private fun aufgabenSeite(alle: List<Eintrag>) {
         val liste = Daten.aufgaben(this, alle)
-        val zeilen = liste.map { a ->
-            hakenZeile(a.text, a.frist?.let { "bis " + tag(it, mitZeit(it)) }, a.erledigt) {
-                Daten.aufgabeUmschalten(this, a)
+        if (liste.none { it.schluessel == offeneAufgabe }) offeneAufgabe = null
+        val zeilen = mutableListOf<View>()
+        var fokus: View? = null
+        var letzteGruppe: String? = null
+        for (a in liste) {
+            val tage = a.frist?.let { tageBis(it) }
+            val gruppe = when {
+                a.erledigt -> "Erledigt"
+                tage == null -> "Ohne Termin"
+                tage < 0 -> "Überfällig"
+                tage == 0 -> "Heute"
+                tage == 1 -> "Morgen"
+                else -> "Später"
+            }
+            if (gruppe != letzteGruppe) {
+                zeilen += ueberschrift(gruppe)
+                letzteGruppe = gruppe
+            }
+            val f = a.frist
+            val rechts = when {
+                f == null || a.erledigt -> null
+                tage!! < 0 || tage > 1 -> SimpleDateFormat("EE d.M.", Locale.GERMANY).format(f)
+                mitZeit(f) -> SimpleDateFormat("HH:mm", Locale.GERMANY).format(f)
+                else -> null
+            }
+            val offen = a.schluessel == offeneAufgabe
+            val z = aufgabeZeile(a, rechts, offen)
+            if (offen) fokus = z
+            zeilen += z
+        }
+        val offenZahl = liste.count { !it.erledigt }
+        rahmen(kopf("Aufgaben", if (offenZahl > 0) "$offenZahl offen" else null, zurueckPfeil = true),
+            liste(zeilen, "Nichts offen. Schön.", fokus))
+    }
+
+    /** Kleine Zwischenüberschrift in Großbuchstaben, z. B. HEUTE. */
+    private fun ueberschrift(t: String) = text(t.uppercase(Locale.GERMANY), 14f, dick = true).apply {
+        letterSpacing = 0.08f
+        setPadding(0, dp(14), 0, dp(2))
+        tag = UEBERSCHRIFT
+    }
+
+    /** Kästchen links mit großer Tippfläche. */
+    private fun kaestchen(erledigt: Boolean, umschalten: () -> Unit) = FrameLayout(this).apply {
+        addView(symbol(if (erledigt) R.drawable.kasten_voll else R.drawable.kasten, 26),
+            FrameLayout.LayoutParams(dp(26), dp(26), Gravity.START or Gravity.TOP).apply { topMargin = dp(13) })
+        contentDescription = if (erledigt) "Erledigt, antippen zum Zurücknehmen" else "Abhaken"
+        setOnClickListener { umschalten() }
+    }
+
+    private fun aufgabeZeile(a: Aufgabe, rechts: String?, offen: Boolean): View {
+        val oben = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        oben.addView(kaestchen(a.erledigt) {
+            Daten.aufgabeUmschalten(this, a)
+            zeichnen()
+        }, LinearLayout.LayoutParams(dp(44), dp(52)))
+        val inhalt = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(12), 0, if (offen) dp(4) else dp(12))
+            addView(text(a.text, 19f, dick = offen).apply {
+                if (!offen) {
+                    maxLines = 1
+                    ellipsize = TextUtils.TruncateAt.END
+                }
+                if (a.erledigt) paintFlags = paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            if (rechts != null && !offen) addView(text(rechts, 15f).apply { setPadding(dp(10), dp(3), 0, 0) })
+            addView(symbol(if (offen) R.drawable.pfeil_oben else R.drawable.pfeil_unten, 22).apply {
+                (layoutParams as LinearLayout.LayoutParams).setMargins(dp(8), dp(2), 0, 0)
+            })
+            setOnClickListener {
+                offeneAufgabe = if (offen) null else a.schluessel
                 zeichnen()
             }
         }
-        rahmen(kopf("Aufgaben", zurueckPfeil = true), liste(zeilen, "Nichts offen. Schön."))
+        oben.addView(inhalt, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+        val zeile = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        if (!offen) {
+            zeile.addView(oben, breit())
+            zeile.addView(punktlinie())
+            return zeile
+        }
+        // Aufgeklappt: umrandet, mit allem, was dazugehört
+        val mehr = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(44), 0, dp(4), dp(12))
+            val f = a.frist
+            addView(text(if (f != null) "bis " + tag(f, mitZeit(f)) else "ohne Termin", 16f).apply {
+                setPadding(0, dp(4), 0, 0)
+            })
+            if (a.bezug.isNotBlank()) addView(text("Gehört zu: " + a.bezug, 16f).apply { setPadding(0, dp(6), 0, 0) })
+            addView(LinearLayout(this@LiteActivity).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(10), 0, dp(2))
+                val wann = a.quelle.start?.let { tag(it, true) } ?: ""
+                addView(text("Aus der Aufnahme $wann", 16f, dick = true), LinearLayout.LayoutParams(0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                addView(symbol(R.drawable.pfeil_rechts, 22))
+                setOnClickListener { oeffnen(Ansicht.AUFNAHME, a.quelle.id) }
+            })
+        }
+        zeile.background = GradientDrawable().apply { cornerRadius = dpf(10f); setColor(Color.WHITE); setStroke(dp(2), Color.BLACK) }
+        zeile.setPadding(dp(10), 0, dp(10), 0)
+        zeile.addView(oben, breit())
+        zeile.addView(mehr, breit())
+        return FrameLayout(this).apply {
+            setPadding(0, dp(6), 0, dp(6))
+            addView(zeile)
+        }
     }
 
-    // ----- Einkauf
+    // ----- Einkauf: nach Abteilungen im Laden, Antippen hakt ab
 
     private fun einkaufSeite(alle: List<Eintrag>) {
         val sachen = Daten.einkauf(this, alle)
-        val zeilen = sachen.map { s ->
-            hakenZeile(s.sache, s.details.ifBlank { null }, s.abgehakt) {
+        val zeilen = mutableListOf<View>()
+        var letzteGruppe: String? = null
+        for (s in sachen) {
+            val gruppe = if (s.abgehakt) "Im Korb" else Daten.ABTEILUNGEN.getOrElse(s.abteilung) { "Sonstiges" }
+            if (gruppe != letzteGruppe) {
+                zeilen += ueberschrift(gruppe)
+                letzteGruppe = gruppe
+            }
+            zeilen += hakenZeile(s.sache, s.details.ifBlank { null }, s.abgehakt) {
                 Daten.sacheUmschalten(this, s)
                 zeichnen()
             }
-        }.toMutableList<View>()
+        }
         if (sachen.any { it.abgehakt }) {
             zeilen += text("Abgehakte entfernen", 18f, dick = true).apply {
                 gravity = Gravity.CENTER
@@ -474,21 +670,21 @@ class LiteActivity : Activity() {
         rahmen(kopf("Einkauf", zurueckPfeil = true), liste(zeilen, "Die Liste ist leer."))
     }
 
-    /** Zeile mit Kästchen zum Abhaken. Erledigtes: gefülltes Kästchen, Text durchgestrichen. */
+    /** Einkaufszeile: Kästchen, Sache, dahinter klein Menge/Details. Die ganze Zeile hakt ab (eine Hand im Laden). */
     private fun hakenZeile(haupt: String, unter: String?, erledigt: Boolean, umschalten: () -> Unit): View {
+        val t = SpannableStringBuilder(haupt)
+        if (unter != null) {
+            val s = t.length
+            t.append("   ").append(unter)
+            t.setSpan(AbsoluteSizeSpan(sp(15f).toInt()), s, t.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
         val zeile = LinearLayout(this).apply {
-            setPadding(0, dp(12), 0, dp(12))
-            addView(symbol(if (erledigt) R.drawable.kasten_voll else R.drawable.kasten, 26).apply {
-                (layoutParams as LinearLayout.LayoutParams).setMargins(0, dp(1), dp(14), 0)
-            })
-            addView(LinearLayout(this@LiteActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                addView(text(haupt, 19f).apply {
-                    maxLines = 3
-                    ellipsize = TextUtils.TruncateAt.END
-                    if (erledigt) paintFlags = paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
-                })
-                if (unter != null) addView(text(unter, 15f).apply { setPadding(0, dp(4), 0, 0) })
+            addView(kaestchen(erledigt, umschalten), LinearLayout.LayoutParams(dp(44), dp(52)))
+            addView(text(t, 19f).apply {
+                setPadding(0, dp(12), 0, dp(12))
+                maxLines = 2
+                ellipsize = TextUtils.TruncateAt.END
+                if (erledigt) paintFlags = paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             setOnClickListener { umschalten() }
         }

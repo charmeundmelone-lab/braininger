@@ -70,6 +70,11 @@ class StueckRecorder(
 
     fun aktuellesGeraet(): AudioDeviceInfo? = aufnahme?.routedDevice
 
+    /** Android selbst schaltet die Aufnahme stumm (Datenschutz-Sperre), anders als Offline+, das die Mikrofone trennt. */
+    fun vomSystemGesperrt(): Boolean = try {
+        aufnahme?.activeRecordingConfiguration?.isClientSilenced == true
+    } catch (_: Exception) { false }
+
     @SuppressLint("MissingPermission")
     private fun schleife() {
         val minPuffer = AudioRecord.getMinBufferSize(

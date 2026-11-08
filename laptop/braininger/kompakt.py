@@ -146,9 +146,23 @@ def abgleich_anstossen() -> None:
     adb("shell", "am", "broadcast", "-a", f"{PAKET}.ABGLEICHEN", "-n", f"{PAKET}/.EinrichtungEmpfaenger")
 
 
+def akku_sparen_aufheben() -> bool:
+    """Mudita stellt nachinstallierte Apps auf „Akku eingeschränkt“ (App-Op RUN_ANY_IN_BACKGROUND = ignore). Dann
+    beendet Android die Aufnahme eine Minute nach dem Ausschalten des Bildschirms („Stopping service due to app
+    idle“, gesehen am 8.11.2026). Gilt nur für Braininger Lite, entspricht „Akku: Uneingeschränkt“ in den
+    Einstellungen. True, wenn etwas geändert wurde."""
+    r = adb("shell", "cmd", "appops", "get", PAKET, "RUN_ANY_IN_BACKGROUND")
+    if "ignore" not in r.stdout:
+        return False
+    adb("shell", "cmd", "appops", "set", PAKET, "RUN_ANY_IN_BACKGROUND", "allow")
+    adb("shell", "dumpsys", "deviceidle", "whitelist", f"+{PAKET}")
+    return True
+
+
 def einrichten() -> str:
     """Schlüssel (falls nötig) erzeugen und an die App geben, Kabelweg öffnen."""
     s = schluessel_holen(neu_wenn_fehlt=True)
+    akku_sparen_aufheben()
     adb("reverse", f"tcp:{PORT}", f"tcp:{PORT}")
     r = adb("shell", "am", "broadcast", "-a", f"{PAKET}.EINRICHTEN", "-n", f"{PAKET}/.EinrichtungEmpfaenger",
             "--es", "schluessel", s)
@@ -167,6 +181,8 @@ def _kabelwache() -> None:
                     adb("reverse", f"tcp:{PORT}", f"tcp:{PORT}")
                 if not verbunden:
                     log.info("Kompakt am Kabel erkannt, Abgleich angestoßen")
+                    if akku_sparen_aufheben():
+                        log.info("Kompakt: Akku-Einschränkung für Braininger Lite aufgehoben (z. B. nach Neuinstallation)")
                 if not verbunden or time.monotonic() - letzter_anstoss >= ABGLEICH_ANSTOSSEN_S:
                     abgleich_anstossen()
                     letzter_anstoss = time.monotonic()

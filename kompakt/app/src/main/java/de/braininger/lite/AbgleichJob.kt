@@ -64,7 +64,10 @@ class AbgleichJob : JobService() {
 }
 
 class NeustartEmpfaenger : BroadcastReceiver() {
-    override fun onReceive(c: Context, i: Intent) = AbgleichJob.planen(c)
+    override fun onReceive(c: Context, i: Intent) {
+        AbgleichJob.planen(c)
+        AufnahmeDienst.bereitHalten(c) // damit die Lauter-Taste nach Neustart und Update gleich wieder geht
+    }
 }
 
 /**
