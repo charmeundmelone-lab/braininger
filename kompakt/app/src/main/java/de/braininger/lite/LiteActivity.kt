@@ -300,7 +300,10 @@ class LiteActivity : Activity() {
         }
     }
 
-    /** Seite mit Kopf, Inhalt (genau eine Seite) und Blätter-Fuß. Kein ScrollView. */
+    /**
+     * Seite mit Kopf, Inhalt (genau eine Seite) und Blätter-Fuß. Kein ScrollView.
+     * Passt alles auf eine Seite, gibt es keinen Fuß: dann gehört der Platz dem Inhalt.
+     */
     private fun rahmen(kopfView: View, inhalt: (Int, Int) -> View) {
         val spalte = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         spalte.addView(kopfView)
@@ -309,13 +312,21 @@ class LiteActivity : Activity() {
         val fussPlatz = FrameLayout(this)
         spalte.addView(fussPlatz, breit())
         wurzel.addView(spalte)
-        // Höhe des Inhalts: alles minus Kopf (63 dp) und Fuß (60 dp)
+        // Höhe des Inhalts: alles minus Kopf (63 dp), Abstand oben (12 dp) und unten (8 dp), mit Fuß noch 60 dp weniger
         val breite = wurzel.width - dp(32)
-        val hoehe = wurzel.height - dp(63) - dp(60) - dp(12)
-        koerper.addView(inhalt(breite, hoehe), FrameLayout.LayoutParams(
+        val ganz = wurzel.height - dp(63) - dp(12) - dp(8)
+        val gewuenscht = seite
+        var v = inhalt(breite, ganz)
+        val mitFuss = seitenZahl > 1
+        if (mitFuss) {
+            (v as? ViewGroup)?.removeAllViews() // die Zeilen werden gleich neu verteilt
+            seite = gewuenscht
+            v = inhalt(breite, ganz - dp(52))
+        }
+        koerper.addView(v, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
         ).apply { setMargins(dp(16), dp(12), dp(16), 0) })
-        fussPlatz.addView(fuss())
+        if (mitFuss) fussPlatz.addView(fuss())
     }
 
     /**
@@ -420,13 +431,8 @@ class LiteActivity : Activity() {
             }
         }
         spalte.addView(knopf, breit(dp(118)).apply { setMargins(dp(16), dp(16), dp(16), 0) })
-        spalte.addView(text(if (laeuft) "Stoppen auch mit der Lauter-Taste: 1 Sekunde halten"
-            else "Oder Lauter-Taste 1 Sekunde halten, auch bei dunklem Bildschirm", 15f).apply {
-            gravity = Gravity.CENTER
-            setPadding(dp(16), dp(8), dp(16), 0)
-        }, breit())
 
-        // Warnung, schwarz hinterlegt
+        // Warnung (schwarz hinterlegt) oder, wenn alles gut ist, der Hinweis auf die Taste
         val eingeschraenkt = getSystemService(ActivityManager::class.java).isBackgroundRestricted
         val warnung = when {
             laeuft && AufnahmeDienst.gesperrt -> "Android hat das Mikrofon gesperrt. Bitte stoppen und neu aufnehmen."
@@ -443,6 +449,12 @@ class LiteActivity : Activity() {
                 setPadding(dp(14), dp(10), dp(14), dp(10))
                 background = GradientDrawable().apply { cornerRadius = dpf(8f); setColor(Color.BLACK) }
             }, breit().apply { setMargins(dp(16), dp(10), dp(16), 0) })
+        } else {
+            spalte.addView(text(if (laeuft) "Stoppen auch mit der Lauter-Taste: 1 Sekunde halten"
+                else "Oder Lauter-Taste 1 Sekunde halten, auch bei dunklem Bildschirm", 15f).apply {
+                gravity = Gravity.CENTER
+                setPadding(dp(16), dp(8), dp(16), 0)
+            }, breit())
         }
 
         // Drei große Einträge
@@ -563,14 +575,14 @@ class LiteActivity : Activity() {
     /** Kleine Zwischenüberschrift in Großbuchstaben, z. B. HEUTE. */
     private fun ueberschrift(t: String) = text(t.uppercase(Locale.GERMANY), 14f, dick = true).apply {
         letterSpacing = 0.08f
-        setPadding(0, dp(14), 0, dp(2))
+        setPadding(0, dp(10), 0, dp(1))
         tag = UEBERSCHRIFT
     }
 
     /** Kästchen links mit großer Tippfläche. */
     private fun kaestchen(erledigt: Boolean, umschalten: () -> Unit) = FrameLayout(this).apply {
         addView(symbol(if (erledigt) R.drawable.kasten_voll else R.drawable.kasten, 26),
-            FrameLayout.LayoutParams(dp(26), dp(26), Gravity.START or Gravity.TOP).apply { topMargin = dp(13) })
+            FrameLayout.LayoutParams(dp(26), dp(26), Gravity.START or Gravity.TOP).apply { topMargin = dp(10) })
         contentDescription = if (erledigt) "Erledigt, antippen zum Zurücknehmen" else "Abhaken"
         setOnClickListener { umschalten() }
     }
@@ -580,10 +592,10 @@ class LiteActivity : Activity() {
         oben.addView(kaestchen(a.erledigt) {
             Daten.aufgabeUmschalten(this, a)
             zeichnen()
-        }, LinearLayout.LayoutParams(dp(44), dp(52)))
+        }, LinearLayout.LayoutParams(dp(44), dp(48)))
         val inhalt = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, dp(12), 0, if (offen) dp(4) else dp(12))
+            setPadding(0, dp(11), 0, if (offen) dp(4) else dp(11))
             addView(text(a.text, 19f, dick = offen).apply {
                 if (!offen) {
                     maxLines = 1
@@ -679,9 +691,9 @@ class LiteActivity : Activity() {
             t.setSpan(AbsoluteSizeSpan(sp(15f).toInt()), s, t.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
         val zeile = LinearLayout(this).apply {
-            addView(kaestchen(erledigt, umschalten), LinearLayout.LayoutParams(dp(44), dp(52)))
+            addView(kaestchen(erledigt, umschalten), LinearLayout.LayoutParams(dp(44), dp(48)))
             addView(text(t, 19f).apply {
-                setPadding(0, dp(12), 0, dp(12))
+                setPadding(0, dp(11), 0, dp(11))
                 maxLines = 2
                 ellipsize = TextUtils.TruncateAt.END
                 if (erledigt) paintFlags = paintFlags or Paint.STRIKE_THRU_TEXT_FLAG

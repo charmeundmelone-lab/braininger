@@ -99,6 +99,9 @@ class AufnahmeDienst : Service() {
     override fun onCreate() {
         super.onCreate()
         tasteEinrichten()
+        haupt.postDelayed({
+            Lager.protokoll(this, "Dienst bereit, Lauter-Taste aktiv" + if (mikrofonGesperrt()) " (Mikrofon noch gesperrt)" else "")
+        }, 1000)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -132,7 +135,8 @@ class AufnahmeDienst : Service() {
             nm.createNotificationChannel(NotificationChannel(KANAL_BEREIT, "Bereit", NotificationManager.IMPORTANCE_MIN))
             Notification.Builder(this, KANAL_BEREIT)
                 .setContentTitle("Braininger ist bereit")
-                .setContentText("Aufnehmen: Lauter-Taste 1 Sekunde halten")
+                .setContentText(if (mikrofonGesperrt()) "Einmal Braininger öffnen, dann nimmt die Lauter-Taste auf"
+                    else "Aufnehmen: Lauter-Taste 1 Sekunde halten")
         }
             .setSmallIcon(R.drawable.symbol)
             .setOngoing(true)
@@ -141,6 +145,16 @@ class AufnahmeDienst : Service() {
             .build()
         startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
     }
+
+    /**
+     * Darf der Dienst gerade ans Mikrofon? Android erlaubt das nur, wenn er aus der sichtbaren App (oder einem
+     * erlaubten Anlass) gestartet wurde. Nur ein klares „nein“ zählt, im Zweifel gilt es als frei.
+     */
+    private fun mikrofonGesperrt(): Boolean = try {
+        getSystemService(android.app.AppOpsManager::class.java).unsafeCheckOpNoThrow(
+            android.app.AppOpsManager.OPSTR_RECORD_AUDIO, android.os.Process.myUid(), packageName
+        ) == android.app.AppOpsManager.MODE_IGNORED
+    } catch (_: Exception) { false }
 
     // ---------------------------------------------------------------- Lauter-Taste
 
