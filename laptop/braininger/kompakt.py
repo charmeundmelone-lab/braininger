@@ -123,6 +123,7 @@ class Empfang(BaseHTTPRequestHandler):
             except ValueError:
                 return self._antwort(400, '{"fehler":"info.json kaputt"}')
             info.pop("auswertung", None)  # Laptop wertet ganz selbst aus
+            nachtrag_zusammenhang(info)
             fehlen = [s for s in info.get("stuecke") or [] if not (ordner / s).exists()]
             if fehlen:
                 return self._antwort(409, json.dumps({"fehler": "Stücke fehlen", "stuecke": fehlen}))
@@ -138,6 +139,32 @@ class Empfang(BaseHTTPRequestHandler):
             log.info("%s: Aufnahme vom Kompakt empfangen", t[2])
             uebersicht_anmelden(t[2][:10])
         self._antwort(200, '{"ok":true}')
+
+
+def nachtrag_zusammenhang(info: dict) -> None:
+    """Nachtrag (Knopf „Weitersprechen“ am Kompakt, Feld nachtrag_zu): Claude bekommt den früheren Gedanken als Hinweis
+    mit, damit „hab's rausgefunden“ verstanden wird. Der alte Gedanke selbst bleibt unverändert; der Nachtrag wird
+    ganz normal ausgewertet und erst in der App darunter gehängt."""
+    zu = str(info.get("nachtrag_zu") or "")
+    if not ID_MUSTER.fullmatch(zu):
+        info.pop("nachtrag_zu", None)
+        return
+    try:
+        alt = json.loads((EINGANG / zu / "ergebnis.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        alt = {}
+    titel = next((n.get("titel") for n in alt.get("notizen") or [] if n.get("titel")), None) or alt.get("kurz") or ""
+    inhalt = " ".join((n.get("inhalt") or "") for n in alt.get("notizen") or [])[:1500]
+    wann = f"{zu[8:10]}.{zu[5:7]}. um {zu[11:13]}:{zu[13:15]} Uhr"
+    teile = [f"Diese Aufnahme ist ein Nachtrag zu einem früheren Gedanken vom {wann}"
+             + (f" mit dem Titel „{titel}“." if titel else ".")]
+    if alt.get("kurz"):
+        teile.append(f"Kurzfassung damals: {alt['kurz']}")
+    if inhalt.strip():
+        teile.append(f"Notiz damals: {inhalt.strip()}")
+    teile.append("Schreib die Notiz als Ergänzung dazu: Bezüge wie „das“ oder „hab's rausgefunden“ meinen diesen "
+                 "Gedanken. Wiederhole nicht, was damals schon stand. Aufgaben nur, wenn im Nachtrag neue genannt werden.")
+    info.setdefault("hinweise", []).append(" ".join(teile))
 
 
 def uebersicht_anmelden(tag: str) -> None:

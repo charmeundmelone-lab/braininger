@@ -16,6 +16,8 @@ class Eintrag(val ordner: File, val info: JSONObject, val roh: JSONObject?) {
     } catch (_: Exception) { null }
     val dauer: Long get() = info.optLong("dauer_s", 0)
     val laeuft: Boolean get() = info.optString("status") == "laeuft"
+    /** Mit „Weitersprechen“ aufgenommen: ID des Gedankens, zu dem das ein Nachtrag ist (siehe Daten.nachtragsZiel). */
+    val nachtragZu: String? = info.optString("nachtrag_zu").takeIf { it.isNotBlank() }
     val kurz: String? get() = erg?.optString("kurz")?.takeIf { it.isNotBlank() && it != "null" }
 
     /** Etwas zum Merken drin? Sonst ist es eine leere Aufnahme (z. B. nur Rauschen). */
@@ -81,7 +83,23 @@ object Daten {
         Lager.json(File(o, "info.json"))?.let { Eintrag(o, it, Lager.json(File(o, "ergebnis.json"))) }
     }
 
-    private fun heute() = SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(Date())
+    /**
+     * Gehört e als Nachtrag unter einen anderen Gedanken? Nur, wenn der noch da ist und Jan den Nachtrag nicht gelöst
+     * hat („Als eigenen Gedanken führen“). Gelöst wird nur hier am Kompakt vermerkt, die Dateien bleiben unverändert.
+     */
+    fun nachtragsZiel(c: Context, e: Eintrag, alle: List<Eintrag>): String? {
+        val zu = e.nachtragZu ?: return null
+        if (c.getSharedPreferences(PREFS, 0).getBoolean("los:${e.id}", false)) return null
+        return zu.takeIf { z -> alle.any { it.id == z } }
+    }
+
+    fun nachtraegeVon(c: Context, original: Eintrag, alle: List<Eintrag>): List<Eintrag> =
+        alle.filter { nachtragsZiel(c, it, alle) == original.id }.sortedBy { it.id }
+
+    fun nachtragLoesen(c: Context, e: Eintrag, los: Boolean) =
+        c.getSharedPreferences(PREFS, 0).edit().putBoolean("los:${e.id}", los).apply()
+
+    private fun heute() =SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).format(Date())
 
     fun aufgaben(c: Context, alle: List<Eintrag>): List<Aufgabe> {
         val p = c.getSharedPreferences(PREFS, 0)

@@ -72,15 +72,24 @@ class AufnahmeDienst : Service() {
         fun nichtMehr(f: () -> Unit) = synchronized(beobachter) { beobachter -= f }
         private fun melden() = synchronized(beobachter) { beobachter.toList() }.forEach { it() }
 
-        private fun senden(c: Context, aktion: String, taste: Boolean = false) {
+        private fun senden(c: Context, aktion: String, taste: Boolean = false, zu: String? = null, zuTitel: String? = null) {
             try {
-                c.startForegroundService(Intent(c, AufnahmeDienst::class.java).setAction(aktion).putExtra("taste", taste))
+                c.startForegroundService(Intent(c, AufnahmeDienst::class.java).setAction(aktion).putExtra("taste", taste)
+                    .putExtra("nachtrag_zu", zu).putExtra("nachtrag_titel", zuTitel))
             } catch (e: Exception) {
                 Lager.protokoll(c, "Dienst ließ sich nicht starten ($aktion): ${e.javaClass.simpleName}")
             }
         }
 
         fun starten(c: Context) = senden(c, START)
+        /** Knopf „Weitersprechen“ auf einer Gedankenseite: die Aufnahme wird ein Nachtrag zu diesem Gedanken. */
+        fun nachtragStarten(c: Context, zu: String, titel: String) = senden(c, START, zu = zu, zuTitel = titel)
+
+        /** Läuft gerade ein Nachtrag: zu welchem Gedanken (ID), sonst null. */
+        @Volatile var nachtragZu: String? = null
+            private set
+        @Volatile var nachtragTitel: String = ""
+            private set
         fun stoppen(c: Context) { if (laeuft) senden(c, STOPP) }
         /** Lauter-Taste in der App gehalten. */
         fun umschalten(c: Context) = senden(c, UMSCHALTEN, taste = true)
@@ -114,7 +123,7 @@ class AufnahmeDienst : Service() {
         vordergrund() // jede Nachricht kommt per startForegroundService: sofort in den Vordergrund
         val taste = intent?.getBooleanExtra("taste", false) == true
         when (intent?.action) {
-            START -> if (!laeuft) beginnen(taste)
+            START -> if (!laeuft) beginnen(taste, intent.getStringExtra("nachtrag_zu"), intent.getStringExtra("nachtrag_titel").orEmpty())
             STOPP -> if (laeuft) beenden(taste)
             UMSCHALTEN -> umschalten()
             MARKIEREN -> markieren()
@@ -135,7 +144,8 @@ class AufnahmeDienst : Service() {
                 this, 1, Intent(this, AufnahmeDienst::class.java).setAction(STOPP), PendingIntent.FLAG_IMMUTABLE
             )
             Notification.Builder(this, KANAL)
-                .setContentTitle("Aufnahme läuft seit " + SimpleDateFormat("HH:mm", Locale.GERMANY).format(start))
+                .setContentTitle((if (nachtragZu != null) "Nachtrag zu „$nachtragTitel“ seit " else "Aufnahme läuft seit ") +
+                    SimpleDateFormat("HH:mm", Locale.GERMANY).format(start))
                 .setContentText("Lauter-Taste: kurz = markieren, halten = stoppen" + if (markiert > 0) " · $markiert markiert" else "")
                 .addAction(Notification.Action.Builder(null, "STOPP", stopp).build())
         } else {
@@ -273,7 +283,7 @@ class AufnahmeDienst : Service() {
         return null
     }
 
-    private fun beginnen(taste: Boolean) {
+    private fun beginnen(taste: Boolean, zu: String? = null, zuTitel: String = "") {
         if (laeuft) return
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             Lager.protokoll(this, "Aufnahme nicht möglich: Mikrofon nicht erlaubt")
@@ -284,6 +294,8 @@ class AufnahmeDienst : Service() {
         stumm = false
         gesperrt = false
         markiert = 0
+        nachtragZu = zu
+        nachtragTitel = zuTitel
         val id = SimpleDateFormat("yyyy-MM-dd_HHmmss", Locale.ROOT).format(start) + "_gedanke"
         val o = File(Lager.ordner(this), id).apply { mkdirs() }
         ordner = o
@@ -305,6 +317,7 @@ class AufnahmeDienst : Service() {
             .put("fotos", JSONArray())
             .put("app_version", "lite-" + versionName())
             .put("geraet", "Mudita Kompakt")
+        if (zu != null) info?.put("nachtrag_zu", zu)
         infoSchreiben()
 
         // erst Vordergrund (mit Aufnahme-Hinweis), damit Android das Mikrofon freigibt, bevor der erste Ton kommt
@@ -400,6 +413,7 @@ class AufnahmeDienst : Service() {
             stumm = false
             gesperrt = false
             seit = 0L
+            nachtragZu = null
             try { sperre?.release() } catch (_: Exception) {}
             getSystemService(NotificationManager::class.java).cancel(3)
             Lager.protokoll(this, "Aufnahme beendet ${ordner?.name}, ${(ende.time - start.time) / 1000} s")
@@ -432,6 +446,7 @@ class AufnahmeDienst : Service() {
             infoSchreiben()
             laeuft = false
             stumm = false
+            nachtragZu = null
             melden()
             Lager.protokoll(this, "Aufnahme unterbrochen: Android hat den Dienst beendet")
         }

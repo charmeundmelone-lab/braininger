@@ -71,7 +71,9 @@ class LiteActivity : Activity() {
     }
 
     private lateinit var wurzel: FrameLayout
-    private val neuZeichnen: () -> Unit = { runOnUiThread { if (ansicht == Ansicht.START) zeichnen() } }
+    private val neuZeichnen: () -> Unit = {
+        runOnUiThread { if (ansicht == Ansicht.START || ansicht == Ansicht.AUFNAHME) zeichnen() } // Knopf und Nachtrag aktuell halten
+    }
 
     private val normal: Typeface by lazy { schrift("fonts/Lato-Regular.ttf", Typeface.NORMAL) }
     private val fett: Typeface by lazy { schrift("fonts/Lato-Bold.ttf", Typeface.BOLD) }
@@ -328,17 +330,23 @@ class LiteActivity : Activity() {
      * Seite mit Kopf, Inhalt (genau eine Seite) und Blätter-Fuß. Kein ScrollView.
      * Passt alles auf eine Seite, gibt es keinen Fuß: dann gehört der Platz dem Inhalt.
      */
-    private fun rahmen(kopfView: View, inhalt: (Int, Int) -> View) {
+    private fun rahmen(kopfView: View, unten: View? = null, inhalt: (Int, Int) -> View) {
         val spalte = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         spalte.addView(kopfView)
         val koerper = FrameLayout(this)
         spalte.addView(koerper, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        if (unten != null) spalte.addView(unten, breit()) // fest unten, auf jeder Seite gleich (z. B. „Weitersprechen“)
         val fussPlatz = FrameLayout(this)
         spalte.addView(fussPlatz, breit())
         wurzel.addView(spalte)
         // Höhe des Inhalts: alles minus Kopf (63 dp), Abstand oben (12 dp) und unten (8 dp), mit Fuß noch 60 dp weniger
         val breite = wurzel.width - dp(32)
-        val ganz = wurzel.height - dp(63) - dp(12) - dp(8)
+        val untenHoehe = unten?.let {
+            it.measure(View.MeasureSpec.makeMeasureSpec(wurzel.width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+            it.measuredHeight
+        } ?: 0
+        val ganz = wurzel.height - dp(63) - dp(12) - dp(8) - untenHoehe
         val gewuenscht = seite
         var v = inhalt(breite, ganz)
         val mitFuss = seitenZahl > 1
@@ -401,7 +409,12 @@ class LiteActivity : Activity() {
             Ansicht.EINKAUF -> einkaufSeite(alle)
             Ansicht.AUFNAHMEN -> tagebuch(alle)
             Ansicht.UEBERSICHT -> uebersichtSeite(gewaehlt)
-            Ansicht.AUFNAHME -> aufnahmeSeite(alle.firstOrNull { it.id == gewaehlt })
+            Ansicht.AUFNAHME -> {
+                // ein Nachtrag (z. B. über „Aus der Aufnahme“ bei einer Aufgabe) öffnet seinen Gedanken
+                val ziel = alle.firstOrNull { it.id == gewaehlt }?.let { Daten.nachtragsZiel(this, it, alle) }
+                if (ziel != null) gewaehlt = ziel
+                aufnahmeSeite(alle.firstOrNull { it.id == gewaehlt }, alle)
+            }
         }
     }
 
@@ -764,7 +777,7 @@ class LiteActivity : Activity() {
                 }
             }.let { knopf -> FrameLayout(this).apply { setPadding(0, dp(16), 0, dp(4)); addView(knopf) } }
         }
-        rahmen(kopf("Einkauf", zurueckPfeil = true), liste(zeilen, "Die Liste ist leer."))
+        rahmen(kopf("Einkauf", zurueckPfeil = true), inhalt = liste(zeilen, "Die Liste ist leer."))
     }
 
     /** Einkaufszeile: Kästchen, Sache, dahinter klein Menge/Details. Die ganze Zeile hakt ab (eine Hand im Laden). */
@@ -802,22 +815,26 @@ class LiteActivity : Activity() {
      */
     private fun tagebuch(alle: List<Eintrag>) {
         val zeilen = mutableListOf<View>()
-        for ((tag, eintraege) in alle.groupBy { it.id.take(10) }) { // alle ist neu → alt sortiert
-            val mitInhalt = eintraege.filter { it.hatInhalt || it.stand != null || it.laeuft }.sortedBy { it.id }
+        // Nachträge stehen bei ihrem Gedanken, nicht als eigene Zeile
+        val eigene = alle.filter { Daten.nachtragsZiel(this, it, alle) == null }
+        for ((tag, eintraege) in eigene.groupBy { it.id.take(10) }) { // alle ist neu → alt sortiert
+            val mitInhalt = eintraege.filter {
+                it.hatInhalt || it.stand != null || it.laeuft || Daten.nachtraegeVon(this, it, alle).isNotEmpty()
+            }.sortedBy { it.id }
             val leer = eintraege.filter { it !in mitInhalt }.sortedBy { it.id }
             zeilen += tagesKopf(tag, eigeneSeite = mitInhalt.isNotEmpty())
             val ue = uebersichtVon(tag)
             if (ue != null && eintraege.any { it.hatInhalt }) zeilen += ueberblick(tag, ue)
-            mitInhalt.forEach { zeilen += tagebuchZeile(it) }
+            mitInhalt.forEach { zeilen += tagebuchZeile(it, alle) }
             if (leer.isNotEmpty()) {
-                if (tag in leereOffen) leer.forEach { zeilen += tagebuchZeile(it) }
+                if (tag in leereOffen) leer.forEach { zeilen += tagebuchZeile(it, alle) }
                 else zeilen += leiseZeile(if (leer.size == 1) "1 leere Aufnahme" else "${leer.size} leere Aufnahmen") {
                     leereOffen += tag
                     zeichnen()
                 }
             }
         }
-        rahmen(kopf("Tagebuch", zurueckPfeil = true), liste(zeilen, "Noch keine Aufnahmen."))
+        rahmen(kopf("Tagebuch", zurueckPfeil = true), inhalt = liste(zeilen, "Noch keine Aufnahmen."))
     }
 
     private fun tagesKopf(tag: String, eigeneSeite: Boolean): View = LinearLayout(this).apply {
@@ -883,7 +900,7 @@ class LiteActivity : Activity() {
     }
 
     /** Uhrzeit in eigener Spalte (gleich breite Ziffern), daneben der Gedanke. */
-    private fun tagebuchZeile(e: Eintrag): View = LinearLayout(this).apply {
+    private fun tagebuchZeile(e: Eintrag, alle: List<Eintrag>): View = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         addView(LinearLayout(this@LiteActivity).apply {
             setPadding(0, dp(11), 0, dp(11))
@@ -907,6 +924,12 @@ class LiteActivity : Activity() {
                 }
                 val unter = listOfNotNull(e.stand, if (!e.hatInhalt && e.stand == null) e.dauerText().ifBlank { null } else null)
                 if (unter.isNotEmpty()) addView(text(unter.joinToString(" · "), 15f).apply { setPadding(0, dp(4), 0, 0) })
+                val nachtraege = Daten.nachtraegeVon(this@LiteActivity, e, alle)
+                if (nachtraege.isNotEmpty()) {
+                    val zuletzt = nachtraege.last().start?.let { tag(it, false) }.orEmpty()
+                    val wort = if (nachtraege.size == 1) "+ Nachtrag $zuletzt" else "+ ${nachtraege.size} Nachträge, zuletzt $zuletzt"
+                    addView(text(wort, 15f, dick = true).apply { setPadding(0, dp(6), 0, 0) })
+                }
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             addView(symbol(R.drawable.pfeil_rechts, 20).apply {
                 (layoutParams as LinearLayout.LayoutParams).setMargins(dp(8), dp(2), 0, 0)
@@ -928,11 +951,51 @@ class LiteActivity : Activity() {
 
     // ----- Eine Aufnahme: Text wie im Buch auf Seiten verteilt
 
-    private fun aufnahmeSeite(e: Eintrag?) {
+    private fun aufnahmeSeite(e: Eintrag?, alle: List<Eintrag>) {
         if (e == null) { zurueck(); return }
         val titel = e.start?.let { SimpleDateFormat("EE d.M. · HH:mm", Locale.GERMANY).format(it) } ?: "Aufnahme"
-        rahmen(kopf(titel, zurueckPfeil = true)) { breite, hoehe -> buchSeite(inhaltText(e), breite, hoehe) }
+        rahmen(kopf(titel, zurueckPfeil = true), unten = weitersprechenKnopf(e)) { breite, hoehe ->
+            buchSeite(inhaltText(e, alle), breite, hoehe)
+        }
     }
+
+    /**
+     * „Weitersprechen“: nimmt einen Nachtrag zu diesem Gedanken auf. Bewusst nur als Knopf (Jan, 8.11.): die
+     * Lauter-Taste bleibt überall eindeutig. Läuft der Nachtrag, wird der Knopf schwarz und beendet ihn.
+     * Läuft gerade eine andere Aufnahme, gibt es keinen Knopf.
+     */
+    private fun weitersprechenKnopf(e: Eintrag): View? {
+        if (e.laeuft) return null
+        val meinNachtrag = AufnahmeDienst.laeuft && AufnahmeDienst.nachtragZu == e.id
+        if (AufnahmeDienst.laeuft && !meinNachtrag) return null
+        val knopf = LinearLayout(this).apply {
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                cornerRadius = dpf(14f)
+                setColor(if (meinNachtrag) Color.BLACK else Color.WHITE)
+                setStroke(dp(2), Color.BLACK)
+            }
+            addView(symbol(if (meinNachtrag) R.drawable.quadrat_weiss else R.drawable.punkt_schwarz, 14))
+            val farbe = if (meinNachtrag) Color.WHITE else Color.BLACK
+            addView(text(if (meinNachtrag) "Nachtrag beenden" else "Weitersprechen", 18f, dick = true, farbe = farbe).apply {
+                setPadding(dp(10), 0, 0, 0)
+            })
+            contentDescription = if (meinNachtrag) "Nachtrag beenden" else "Nachtrag zu diesem Gedanken aufnehmen"
+            setOnClickListener {
+                when {
+                    meinNachtrag -> AufnahmeDienst.stoppen(this@LiteActivity)
+                    checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED ->
+                        requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1)
+                    else -> AufnahmeDienst.nachtragStarten(this@LiteActivity, e.id, e.titel)
+                }
+            }
+        }
+        return FrameLayout(this).apply {
+            setPadding(dp(16), dp(8), dp(16), dp(10))
+            addView(knopf, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)))
+        }
+    }
+
 
     /**
      * Buchsatz für Aufnahme und Tagesübersicht: Absätze mit kleinem Abstand statt Leerzeilen, hängende Einzüge für
@@ -979,6 +1042,20 @@ class LiteActivity : Activity() {
                 start, b.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
 
+        /** Antippbare Zeile im Buchtext, fett mit „›“, ohne Unterstreichung (buchSeite wertet das Tippen aus). */
+        fun verweis(t: String, aktion: () -> Unit) {
+            luecke()
+            val start = b.length
+            b.append("$t  ›")
+            b.setSpan(AbsoluteSizeSpan(sp(16f).toInt()), start, b.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            b.setSpan(TypefaceSpan(fett), start, b.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            b.setSpan(object : android.text.style.ClickableSpan() {
+                override fun onClick(w: View) = aktion()
+                override fun updateDrawState(ds: TextPaint) {} // bleibt schwarz, keine Linie
+            }, start, b.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            b.append("\n")
+        }
+
         fun markdown(inhalt: String) {
             var vorherPunkt = false
             val punktEinzug = messen.measureText("•  ").toInt()
@@ -1003,20 +1080,54 @@ class LiteActivity : Activity() {
         }
     }
 
-    private fun inhaltText(e: Eintrag): CharSequence {
+    /**
+     * Ein Gedanke wie im Buch. Nachträge stehen darunter, jeder mit eigener Überschrift („Nachtrag · Montag, 18:42“);
+     * der ursprüngliche Gedanke wird nie umgeschrieben. Unter jedem Nachtrag „Als eigenen Gedanken führen“, auf einem
+     * gelösten Nachtrag „Wieder als Nachtrag anhängen“: beides nur am Kompakt vermerkt, nichts wird gelöscht.
+     */
+    private fun inhaltText(e: Eintrag, alle: List<Eintrag>): CharSequence {
         val s = Satz()
         s.absatz(e.titel, 23f, dick = true, abstandVorher = false)
-        val markiert = e.info.optJSONArray("markierungen")?.length() ?: 0
-        val meta = listOfNotNull(
-            e.dauerText().ifBlank { null },
-            when (markiert) { 0 -> null; 1 -> "1 Stelle markiert"; else -> "$markiert Stellen markiert" },
-            e.stand,
-        )
-        s.absatz(meta.joinToString(" · ").ifBlank { " " }, 15f, abstandVorher = false)
-        val erg = e.erg ?: return s.b
+        inhaltTeil(s, e)
+        for (n in Daten.nachtraegeVon(this, e, alle)) {
+            s.luecke()
+            s.luecke()
+            val wann = n.start?.let { SimpleDateFormat("EEEE, HH:mm", Locale.GERMANY).format(it) } ?: ""
+            s.absatz("Nachtrag · $wann", 19f, dick = true)
+            if (n.hatInhalt && n.titel != e.titel) s.absatz(n.titel, 18f, abstandVorher = false)
+            inhaltTeil(s, n, ohneMeta = n.stand == null)
+            s.verweis("Als eigenen Gedanken führen") {
+                Daten.nachtragLoesen(this, n, true)
+                zeichnen()
+            }
+        }
+        val ziel = e.nachtragZu?.takeIf { z -> Daten.nachtragsZiel(this, e, alle) == null && alle.any { it.id == z } }
+        if (ziel != null) {
+            s.luecke()
+            s.verweis("Wieder als Nachtrag anhängen") {
+                Daten.nachtragLoesen(this, e, false)
+                gewaehlt = ziel
+                zeichnen()
+            }
+        }
+        return s.b
+    }
+
+    /** Meta-Zeile, Kurzfassung, Aufgaben, Einkauf, Notizen eines Eintrags. */
+    private fun inhaltTeil(s: Satz, e: Eintrag, ohneMeta: Boolean = false) {
+        if (!ohneMeta) {
+            val markiert = e.info.optJSONArray("markierungen")?.length() ?: 0
+            val meta = listOfNotNull(
+                e.dauerText().ifBlank { null },
+                when (markiert) { 0 -> null; 1 -> "1 Stelle markiert"; else -> "$markiert Stellen markiert" },
+                e.stand,
+            )
+            s.absatz(meta.joinToString(" · ").ifBlank { " " }, 15f, abstandVorher = false)
+        }
+        val erg = e.erg ?: return
         if (!e.hatInhalt) {
-            s.absatz("Der Laptop hat in dieser Aufnahme nichts zum Merken gefunden.", 18f)
-            return s.b
+            s.absatz("Der Laptop hat hier nichts zum Merken gefunden.", 18f)
+            return
         }
         e.kurz?.let { if (it != e.titel) s.absatz(it, 18f) }
 
@@ -1048,7 +1159,6 @@ class LiteActivity : Activity() {
             if (notizen.length() > 1 || n.optString("titel") != e.titel) s.absatz(n.optString("titel"), 19f, dick = true)
             s.markdown(inhalt)
         }
-        return s.b
     }
 
     // ----- Tagesübersicht (vom Laptop, am Morgen nach dem Tag): ganz, wie im Buch
@@ -1109,6 +1219,20 @@ class LiteActivity : Activity() {
                 c.translate(0f, -oben.toFloat())
                 satz.draw(c)
                 c.restore()
+            }
+
+            /** Antippbare Verweise (Satz.verweis) im gezeichneten Text finden. */
+            override fun onTouchEvent(ev: android.view.MotionEvent): Boolean {
+                val s = text as? Spanned ?: return false
+                val y = ev.y.toInt() + oben
+                if (y > unten) return false
+                val zeile = satz.getLineForVertical(y)
+                if (zeile < von || zeile >= bis || ev.x > satz.getLineRight(zeile) + dp(24)) return false
+                val stelle = satz.getOffsetForHorizontal(zeile, ev.x)
+                val treffer = s.getSpans(stelle, stelle, android.text.style.ClickableSpan::class.java).firstOrNull()
+                    ?: return false
+                if (ev.action == android.view.MotionEvent.ACTION_UP) treffer.onClick(this)
+                return true
             }
         }
     }
