@@ -24,6 +24,9 @@ object Summer {
     /** Aufnahme beendet: zweimal kurz. */
     fun stopp(c: Context) = muster(c, 120, 140, 120)
 
+    /** Markierung gesetzt: ein kurzes Tippen. */
+    fun markiert(c: Context) = muster(c, 70)
+
     /** Mikrofon stumm: dreimal lang. */
     fun warnung(c: Context) = muster(c, 500, 200, 500, 200, 500)
 }

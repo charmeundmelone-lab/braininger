@@ -47,9 +47,10 @@ class LiteActivity : Activity() {
 
     private companion object {
         const val UEBERSCHRIFT = "ueberschrift"
+        const val TAGESKOPF = "tageskopf" // beginnt immer eine neue Seite
     }
 
-    private enum class Ansicht { START, AUFGABEN, EINKAUF, AUFNAHMEN, AUFNAHME }
+    private enum class Ansicht { START, AUFGABEN, EINKAUF, AUFNAHMEN, AUFNAHME, UEBERSICHT }
 
     private var ansicht = Ansicht.START
     private var seite = 0
@@ -59,6 +60,7 @@ class LiteActivity : Activity() {
     private var zurueckSeite = 0
     private var gewaehlt: String? = null
     private var offeneAufgabe: String? = null // aufgeklappte Aufgabe
+    private val leereOffen = mutableSetOf<String>() // Tage, deren leere Aufnahmen aufgeklappt sind
     private var abgleichLaeuft = false
     private var lauterGehalten = false
     private val lauterHalten = Runnable {
@@ -128,6 +130,7 @@ class LiteActivity : Activity() {
     /**
      * Lauter-Taste 1 Sekunde halten = Aufnahme an/aus (wie überall auf dem Kompakt).
      * Kurz drücken: blättern wie in Books (Leiser = weiter, Lauter = zurück), auf der Startseite normale Lautstärke.
+     * Läuft eine Aufnahme, setzt kurz Lauter eine Markierung („das war wichtig“).
      */
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         when (keyCode) {
@@ -153,7 +156,11 @@ class LiteActivity : Activity() {
             KeyEvent.KEYCODE_VOLUME_UP -> {
                 wurzel.removeCallbacks(lauterHalten)
                 if (!lauterGehalten) {
-                    if (blaetterbar()) blaettern(-1) else lautstaerke(AudioManager.ADJUST_RAISE)
+                    when {
+                        AufnahmeDienst.laeuft -> AufnahmeDienst.markieren(this) // wie überall: kurz = markieren
+                        blaetterbar() -> blaettern(-1)
+                        else -> lautstaerke(AudioManager.ADJUST_RAISE)
+                    }
                 }
                 lauterGehalten = false
                 return true
@@ -182,7 +189,7 @@ class LiteActivity : Activity() {
     }
 
     private fun oeffnen(a: Ansicht, id: String? = null) {
-        if (a == Ansicht.AUFNAHME) {
+        if (a == Ansicht.AUFNAHME || a == Ansicht.UEBERSICHT) {
             zurueckZu = ansicht
             zurueckSeite = seite
         }
@@ -193,7 +200,7 @@ class LiteActivity : Activity() {
     }
 
     private fun zurueck() {
-        if (ansicht == Ansicht.AUFNAHME) {
+        if (ansicht == Ansicht.AUFNAHME || ansicht == Ansicht.UEBERSICHT) {
             ansicht = zurueckZu
             seite = zurueckSeite
         } else {
@@ -289,9 +296,26 @@ class LiteActivity : Activity() {
             }
         }
         zeile.addView(pfeil(R.drawable.pfeil_links, seite > 0, -1), LinearLayout.LayoutParams(dp(96), dp(58)))
-        zeile.addView(text(if (seitenZahl > 1) "Seite ${seite + 1} von $seitenZahl" else "", 15f).apply {
+        // bis 7 Seiten ruhige Punkte (aktuelle Seite gefüllt), darüber „3 / 12“
+        val mitte: View = if (seitenZahl <= 7) object : View(this) {
+            private val voll = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK }
+            private val ring = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.BLACK; style = Paint.Style.STROKE; strokeWidth = dpf(1.6f)
+            }
+            override fun onDraw(c: Canvas) {
+                val abstand = dpf(18f)
+                val x0 = width / 2f - abstand * (seitenZahl - 1) / 2f
+                for (i in 0 until seitenZahl) {
+                    if (i == seite) c.drawCircle(x0 + i * abstand, height / 2f, dpf(4.5f), voll)
+                    else c.drawCircle(x0 + i * abstand, height / 2f, dpf(3.5f), ring)
+                }
+            }
+        } else text("${seite + 1} / $seitenZahl", 15f).apply {
             gravity = Gravity.CENTER
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            fontFeatureSettings = "tnum"
+            letterSpacing = 0.06f
+        }
+        zeile.addView(mitte, LinearLayout.LayoutParams(0, dp(58), 1f).also { if (mitte is TextView) it.height = ViewGroup.LayoutParams.WRAP_CONTENT })
         zeile.addView(pfeil(R.drawable.pfeil_rechts, seite < seitenZahl - 1, +1), LinearLayout.LayoutParams(dp(96), dp(58)))
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -341,10 +365,11 @@ class LiteActivity : Activity() {
             z.measure(View.MeasureSpec.makeMeasureSpec(breite, View.MeasureSpec.EXACTLY),
                 View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
             val h = z.measuredHeight
-            if (belegt + h > hoehe && seiten.last().isNotEmpty()) {
+            val neueSeite = z.tag == TAGESKOPF && seiten.last().isNotEmpty()
+            if (neueSeite || (belegt + h > hoehe && seiten.last().isNotEmpty())) {
                 val alt = seiten.last()
                 val neu = mutableListOf<View>()
-                if (alt.size > 1 && alt.last().tag == UEBERSCHRIFT) neu += alt.removeAt(alt.size - 1)
+                if (!neueSeite && alt.size > 1 && alt.last().tag == UEBERSCHRIFT) neu += alt.removeAt(alt.size - 1)
                 seiten += neu
                 belegt = neu.sumOf { it.measuredHeight }
             }
@@ -371,7 +396,8 @@ class LiteActivity : Activity() {
             Ansicht.START -> start(alle)
             Ansicht.AUFGABEN -> aufgabenSeite(alle)
             Ansicht.EINKAUF -> einkaufSeite(alle)
-            Ansicht.AUFNAHMEN -> aufnahmenListe(alle)
+            Ansicht.AUFNAHMEN -> tagebuch(alle)
+            Ansicht.UEBERSICHT -> uebersichtSeite(gewaehlt)
             Ansicht.AUFNAHME -> aufnahmeSeite(alle.firstOrNull { it.id == gewaehlt })
         }
     }
@@ -399,7 +425,18 @@ class LiteActivity : Activity() {
 
     private fun start(alle: List<Eintrag>) {
         val spalte = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        spalte.addView(kopf("Braininger", SimpleDateFormat("EE d. MMM", Locale.GERMANY).format(Date())))
+        // Umschlag: Wochentag klein in Versalien, Datum groß, darunter die dicke Linie wie auf allen Seiten
+        spalte.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+            addView(text(SimpleDateFormat("EEEE", Locale.GERMANY).format(Date()).uppercase(Locale.GERMANY), 13f, dick = true).apply {
+                letterSpacing = 0.14f
+            })
+            addView(text(SimpleDateFormat("d. MMMM", Locale.GERMANY).format(Date()), 30f, dick = true).apply {
+                setPadding(0, dp(2), 0, 0)
+            })
+        })
+        spalte.addView(dickeLinie())
 
         // Großer Knopf
         val laeuft = AufnahmeDienst.laeuft
@@ -407,16 +444,18 @@ class LiteActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             if (laeuft) {
-                background = GradientDrawable().apply { cornerRadius = dpf(16f); setColor(Color.WHITE); setStroke(dp(3), Color.BLACK) }
+                background = GradientDrawable().apply { cornerRadius = dpf(20f); setColor(Color.WHITE); setStroke(dp(3), Color.BLACK) }
                 addView(LinearLayout(this@LiteActivity).apply {
                     gravity = Gravity.CENTER
                     addView(symbol(R.drawable.quadrat, 18))
                     addView(text("Stoppen", 26f, dick = true).apply { setPadding(dp(12), 0, 0, 0) })
                 })
                 val seit = SimpleDateFormat("HH:mm", Locale.GERMANY).format(Date(AufnahmeDienst.seit))
-                addView(text("Aufnahme läuft seit $seit", 16f).apply { setPadding(0, dp(8), 0, 0); gravity = Gravity.CENTER })
+                val m = AufnahmeDienst.markiert
+                val zusatz = when (m) { 0 -> ""; 1 -> " · 1 markiert"; else -> " · $m markiert" }
+                addView(text("Aufnahme läuft seit $seit$zusatz", 16f).apply { setPadding(0, dp(8), 0, 0); gravity = Gravity.CENTER })
             } else {
-                background = GradientDrawable().apply { cornerRadius = dpf(16f); setColor(Color.BLACK) }
+                background = GradientDrawable().apply { cornerRadius = dpf(20f); setColor(Color.BLACK) }
                 addView(LinearLayout(this@LiteActivity).apply {
                     gravity = Gravity.CENTER
                     addView(symbol(R.drawable.punkt, 18))
@@ -430,7 +469,7 @@ class LiteActivity : Activity() {
                 else AufnahmeDienst.starten(this@LiteActivity)
             }
         }
-        spalte.addView(knopf, breit(dp(118)).apply { setMargins(dp(16), dp(16), dp(16), 0) })
+        spalte.addView(knopf, breit(dp(108)).apply { setMargins(dp(16), dp(16), dp(16), 0) })
 
         // Warnung (schwarz hinterlegt) oder, wenn alles gut ist, der Hinweis auf die Taste
         val eingeschraenkt = getSystemService(ActivityManager::class.java).isBackgroundRestricted
@@ -450,7 +489,8 @@ class LiteActivity : Activity() {
                 background = GradientDrawable().apply { cornerRadius = dpf(8f); setColor(Color.BLACK) }
             }, breit().apply { setMargins(dp(16), dp(10), dp(16), 0) })
         } else {
-            spalte.addView(text("Oder: Lauter-Taste 1 Sekunde halten", 15f).apply {
+            spalte.addView(text(if (laeuft) "Lauter-Taste: kurz = markieren, halten = stoppen"
+                else "Oder: Lauter-Taste 1 Sekunde halten", 15f).apply {
                 gravity = Gravity.CENTER
                 setPadding(dp(16), dp(8), dp(16), 0)
             }, breit())
@@ -458,15 +498,12 @@ class LiteActivity : Activity() {
 
         // Drei große Einträge
         val aufgaben = Daten.aufgaben(this, alle)
+        // ruhig, ohne Zahlen: was heute dran ist, sonst was diese Woche, sonst was irgendwann (Grill 20.10.)
         val offen = aufgaben.filter { !it.erledigt }
-        val ueberfaellig = offen.count { a -> a.frist?.let { tageBis(it) < 0 } == true }
-        val naechste = offen.firstOrNull { a -> a.frist?.let { tageBis(it) >= 0 } == true }?.frist
-        val aufgabenText = when {
-            offen.isEmpty() -> "Nichts offen"
-            ueberfaellig > 0 -> "${offen.size} offen · $ueberfaellig überfällig"
-            naechste != null -> "${offen.size} offen · als Nächstes ${tag(naechste, mitZeit(naechste))}"
-            else -> "${offen.size} offen"
-        }
+        val korbTitel = listOf("Heute", "Diese Woche", "Irgendwann")
+        val ersterKorb = offen.minOfOrNull { korb(it) }
+        val aufgabenText = if (ersterKorb == null) "Nichts offen" else
+            korbTitel[ersterKorb] + ": " + offen.filter { korb(it) == ersterKorb }.joinToString(" · ") { it.text }
         val sachen = Daten.einkauf(this, alle).filter { !it.abgehakt }
         val einkaufText = when (sachen.size) {
             0 -> "Liste ist leer"
@@ -485,7 +522,7 @@ class LiteActivity : Activity() {
         menue.addView(punktlinie())
         menue.addView(menuePunkt("Einkauf", einkaufText) { oeffnen(Ansicht.EINKAUF) })
         menue.addView(punktlinie())
-        menue.addView(menuePunkt("Aufnahmen", aufnahmenText) { oeffnen(Ansicht.AUFNAHMEN) })
+        menue.addView(menuePunkt("Tagebuch", aufnahmenText) { oeffnen(Ansicht.AUFNAHMEN) })
         spalte.addView(menue, breit().apply { setMargins(dp(16), dp(14), dp(16), 0) })
 
         // Rest füllen, Laptop-Zeile ganz unten
@@ -531,15 +568,16 @@ class LiteActivity : Activity() {
     // ----- Aufgaben
 
     /**
-     * Alle Aufgaben kompakt, nach Tagen gruppiert, damit möglichst alles auf eine Seite passt. Erst einzeilig; der
-     * übrige Platz geht der Reihe nach an offene Aufgaben, die zweizeilig ganz lesbar werden, solange alles auf die
-     * Seite passt. Antippen klappt eine Aufgabe auf: ganzer Text, Frist, aus welcher Aufnahme. Das Kästchen hakt ab.
+     * Drei ruhige Körbe nach Jans Regeln (Grill Kalender/ADHS, 20.10.2026): Heute, Diese Woche, Irgendwann.
+     * Keine Uhrzeiten, keine Zahlen, kein „überfällig“: Liegengebliebenes steht still unter Heute mit „seit Fr.“,
+     * eine Frist von morgen wandert schon heute nach Heute.
+     * Erst einzeilig; der übrige Platz geht der Reihe nach an offene Aufgaben, die zweizeilig ganz lesbar werden,
+     * solange alles auf die Seite passt. Antippen klappt eine Aufgabe auf, das Kästchen hakt ab.
      */
     private fun aufgabenSeite(alle: List<Eintrag>) {
         val liste = Daten.aufgaben(this, alle)
         if (liste.none { it.schluessel == offeneAufgabe }) offeneAufgabe = null
-        val offenZahl = liste.count { !it.erledigt }
-        rahmen(kopf("Aufgaben", if (offenZahl > 0) "$offenZahl offen" else null, zurueckPfeil = true)) { breite, hoehe ->
+        rahmen(kopf("Aufgaben", zurueckPfeil = true)) { breite, hoehe ->
             fun hoeheVon(v: View): Int {
                 v.measure(View.MeasureSpec.makeMeasureSpec(breite, View.MeasureSpec.EXACTLY),
                     View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
@@ -556,19 +594,44 @@ class LiteActivity : Activity() {
                 }
             }
             val (zeilen, fokus) = aufgabenZeilen(liste, zweizeilig)
-            liste(zeilen, "Nichts offen. Schön.", fokus)(breite, hoehe)
+            liste(zeilen, "Nichts offen.", fokus)(breite, hoehe)
         }
     }
 
-    /** Rechts in der Zeile: Datum bei überfälligen und späteren Aufgaben, Uhrzeit bei heute und morgen. */
+    /** 0 = Heute (auch Liegengebliebenes und Fristen von morgen), 1 = Diese Woche, 2 = Irgendwann. */
+    private fun korb(a: Aufgabe): Int {
+        val tage = a.frist?.let { tageBis(it) } ?: return 2
+        return when {
+            tage <= 1 -> 0
+            tage <= 7 -> 1
+            else -> 2
+        }
+    }
+
+    /** Leise Angabe rechts: „seit Fr.“, „morgen“, „Mi.“ oder ein Datum. Nie eine Uhrzeit. */
     private fun rechtsText(a: Aufgabe): String? {
         val f = a.frist ?: return null
         if (a.erledigt) return null
         val tage = tageBis(f)
         return when {
-            tage < 0 || tage > 1 -> SimpleDateFormat("EE d.M.", Locale.GERMANY).format(f)
-            mitZeit(f) -> SimpleDateFormat("HH:mm", Locale.GERMANY).format(f)
-            else -> null
+            tage < -6 -> "seit " + SimpleDateFormat("d.M.", Locale.GERMANY).format(f)
+            tage < 0 -> "seit " + SimpleDateFormat("EE", Locale.GERMANY).format(f)
+            tage == 0 -> null
+            tage == 1 -> "morgen"
+            tage <= 7 -> SimpleDateFormat("EE", Locale.GERMANY).format(f)
+            else -> SimpleDateFormat("d.M.", Locale.GERMANY).format(f)
+        }
+    }
+
+    /** Ausgeschrieben für die aufgeklappte Aufgabe: „seit Freitag, 6.11.“, „bis morgen“, „bis Mittwoch, 11.11.“. */
+    private fun fristLang(f: Date): String {
+        val tage = tageBis(f)
+        val datum = SimpleDateFormat("EEEE, d.M.", Locale.GERMANY).format(f)
+        return when {
+            tage < 0 -> "seit $datum"
+            tage == 0 -> "bis heute"
+            tage == 1 -> "bis morgen"
+            else -> "bis $datum"
         }
     }
 
@@ -578,15 +641,7 @@ class LiteActivity : Activity() {
         var fokus: View? = null
         var letzteGruppe: String? = null
         for (a in liste) {
-            val tage = a.frist?.let { tageBis(it) }
-            val gruppe = when {
-                a.erledigt -> "Erledigt"
-                tage == null -> "Ohne Termin"
-                tage < 0 -> "Überfällig"
-                tage == 0 -> "Heute"
-                tage == 1 -> "Morgen"
-                else -> "Später"
-            }
+            val gruppe = if (a.erledigt) "Erledigt" else listOf("Heute", "Diese Woche", "Irgendwann")[korb(a)]
             if (gruppe != letzteGruppe) {
                 zeilen += ueberschrift(gruppe)
                 letzteGruppe = gruppe
@@ -652,7 +707,7 @@ class LiteActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(44), 0, dp(4), dp(12))
             val f = a.frist
-            if (f != null) addView(text("bis " + tag(f, mitZeit(f)), 16f).apply { setPadding(0, dp(4), 0, 0) })
+            if (f != null) addView(text(fristLang(f), 16f).apply { setPadding(0, dp(4), 0, 0) })
             if (a.bezug.isNotBlank()) addView(text("Gehört zu: " + a.bezug, 16f).apply { setPadding(0, dp(6), 0, 0) })
             addView(LinearLayout(this@LiteActivity).apply {
                 gravity = Gravity.CENTER_VERTICAL
@@ -734,31 +789,120 @@ class LiteActivity : Activity() {
         }
     }
 
-    // ----- Aufnahmen
+    // ----- Tagebuch: die Aufnahmen als Buch nach Tagen
 
-    private fun aufnahmenListe(alle: List<Eintrag>) {
-        val zeilen = alle.map { e ->
-            LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                addView(LinearLayout(this@LiteActivity).apply {
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(0, dp(12), 0, dp(12))
-                    addView(LinearLayout(this@LiteActivity).apply {
-                        orientation = LinearLayout.VERTICAL
-                        addView(text(e.titel, 19f, dick = e.hatInhalt || e.stand != null || e.laeuft).apply {
-                            maxLines = 2
-                            ellipsize = TextUtils.TruncateAt.END
-                        })
-                        val teile = listOfNotNull(e.start?.let { tag(it, true) }, e.dauerText().ifBlank { null }, e.stand)
-                        addView(text(teile.joinToString(" · "), 15f).apply { setPadding(0, dp(5), 0, 0) })
-                    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                    addView(symbol(R.drawable.pfeil_rechts, 24))
-                    setOnClickListener { oeffnen(Ansicht.AUFNAHME, e.id) }
-                }, breit())
-                addView(punktlinie())
+    /**
+     * Jeder Tag mit Inhalt beginnt auf einer neuen Seite wie ein Kapitel: Wochentag groß, Datum, ein kurzer Strich,
+     * darunter der Tagesüberblick vom Laptop (sobald der Tag vorbei ist) und die Gedanken in der Reihenfolge des Tages.
+     * Leere Aufnahmen stören nicht: sie stehen als eine leise Zeile da und lassen sich aufklappen. Tage ohne Inhalt
+     * bekommen keine eigene Seite.
+     */
+    private fun tagebuch(alle: List<Eintrag>) {
+        val zeilen = mutableListOf<View>()
+        for ((tag, eintraege) in alle.groupBy { it.id.take(10) }) { // alle ist neu → alt sortiert
+            val mitInhalt = eintraege.filter { it.hatInhalt || it.stand != null || it.laeuft }.sortedBy { it.id }
+            val leer = eintraege.filter { it !in mitInhalt }.sortedBy { it.id }
+            zeilen += tagesKopf(tag, eigeneSeite = mitInhalt.isNotEmpty())
+            val ue = uebersichtVon(tag)
+            if (ue != null && eintraege.any { it.hatInhalt }) zeilen += ueberblick(tag, ue)
+            mitInhalt.forEach { zeilen += tagebuchZeile(it) }
+            if (leer.isNotEmpty()) {
+                if (tag in leereOffen) leer.forEach { zeilen += tagebuchZeile(it) }
+                else zeilen += leiseZeile(if (leer.size == 1) "1 leere Aufnahme" else "${leer.size} leere Aufnahmen") {
+                    leereOffen += tag
+                    zeichnen()
+                }
             }
         }
-        rahmen(kopf("Aufnahmen", zurueckPfeil = true), liste(zeilen, "Noch keine Aufnahmen."))
+        rahmen(kopf("Tagebuch", zurueckPfeil = true), liste(zeilen, "Noch keine Aufnahmen."))
+    }
+
+    private fun tagesKopf(tag: String, eigeneSeite: Boolean): View = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(0, if (eigeneSeite) dp(2) else dp(18), 0, dp(6))
+        this.tag = if (eigeneSeite) TAGESKOPF else UEBERSCHRIFT
+        val d = tagDatum(tag)
+        val abstand = d?.let { tageBis(it) }
+        val oben = when (abstand) { 0 -> "Heute"; -1 -> "Gestern"; else -> null }
+        if (oben != null) addView(text(oben.uppercase(Locale.GERMANY), 13f, dick = true).apply {
+            letterSpacing = 0.12f
+            setPadding(0, 0, 0, dp(4))
+        })
+        if (d != null) {
+            addView(text(SimpleDateFormat("EEEE", Locale.GERMANY).format(d), if (eigeneSeite) 30f else 22f, dick = true))
+            addView(text(SimpleDateFormat("d. MMMM yyyy", Locale.GERMANY).format(d), 16f).apply { setPadding(0, dp(3), 0, 0) })
+        } else addView(text(tag, 22f, dick = true))
+        // kurzer, kräftiger Strich als ruhiger Akzent
+        addView(View(this@LiteActivity).apply { setBackgroundColor(Color.BLACK) },
+            LinearLayout.LayoutParams(dp(36), dp(3)).apply { topMargin = dp(10) })
+    }
+
+    /** Der Tag in Kürze, antippen öffnet den ganzen Überblick. */
+    private fun ueberblick(tag: String, ue: org.json.JSONObject): View = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(0, dp(12), 0, dp(10))
+        addView(text(ue.optString("titel"), 19f, dick = true))
+        val kurz = kurzfassung(ue.optString("inhalt"))
+        if (kurz.isNotBlank()) addView(text(kurz, 17f).apply {
+            maxLines = 5
+            ellipsize = TextUtils.TruncateAt.END
+            setLineSpacing(dpf(4f), 1f)
+            setPadding(0, dp(6), 0, 0)
+        })
+        addView(LinearLayout(this@LiteActivity).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(8), 0, 0)
+            addView(text("Ganzer Tagesüberblick", 15f, dick = true))
+            addView(symbol(R.drawable.pfeil_rechts, 18).apply {
+                (layoutParams as LinearLayout.LayoutParams).leftMargin = dp(4)
+            })
+        })
+        setOnClickListener { oeffnen(Ansicht.UEBERSICHT, tag) }
+    }
+
+    /** Abschnitt „Der Tag in Kürze“ aus dem Markdown, sonst der erste Absatz. */
+    private fun kurzfassung(inhalt: String): String {
+        val zeilen = inhalt.lines()
+        val ab = zeilen.indexOfFirst { it.trimStart().startsWith("#") && it.contains("in Kürze", ignoreCase = true) }
+        val teil = if (ab >= 0) zeilen.drop(ab + 1).takeWhile { !it.trimStart().startsWith("#") }
+        else zeilen.dropWhile { it.isBlank() || it.trimStart().startsWith("#") }.takeWhile { it.isNotBlank() }
+        return teil.joinToString(" ") { it.trim() }.replace("**", "").trim()
+    }
+
+    /** Uhrzeit in eigener Spalte (gleich breite Ziffern), daneben der Gedanke. */
+    private fun tagebuchZeile(e: Eintrag): View = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        addView(LinearLayout(this@LiteActivity).apply {
+            setPadding(0, dp(11), 0, dp(11))
+            addView(text(e.start?.let { SimpleDateFormat("HH:mm", Locale.GERMANY).format(it) } ?: "", 16f).apply {
+                fontFeatureSettings = "tnum"
+                setPadding(0, dp(2), 0, 0)
+            }, LinearLayout.LayoutParams(dp(56), ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(LinearLayout(this@LiteActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(text(e.titel, 18f, dick = e.hatInhalt || e.laeuft).apply {
+                    maxLines = 2
+                    ellipsize = TextUtils.TruncateAt.END
+                })
+                val unter = listOfNotNull(e.stand, if (!e.hatInhalt && e.stand == null) e.dauerText().ifBlank { null } else null)
+                if (unter.isNotEmpty()) addView(text(unter.joinToString(" · "), 15f).apply { setPadding(0, dp(4), 0, 0) })
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(symbol(R.drawable.pfeil_rechts, 20).apply {
+                (layoutParams as LinearLayout.LayoutParams).setMargins(dp(8), dp(2), 0, 0)
+            })
+            setOnClickListener { oeffnen(Ansicht.AUFNAHME, e.id) }
+        }, breit())
+        addView(punktlinie())
+    }
+
+    private fun leiseZeile(t: String, aktion: () -> Unit): View = LinearLayout(this).apply {
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(56), dp(12), 0, dp(12))
+        addView(text(t, 15f))
+        addView(symbol(R.drawable.pfeil_unten, 18).apply {
+            (layoutParams as LinearLayout.LayoutParams).leftMargin = dp(6)
+        })
+        setOnClickListener { aktion() }
     }
 
     // ----- Eine Aufnahme: Text wie im Buch auf Seiten verteilt
@@ -769,9 +913,14 @@ class LiteActivity : Activity() {
         rahmen(kopf(titel, zurueckPfeil = true)) { breite, hoehe -> buchSeite(inhaltText(e), breite, hoehe) }
     }
 
-    private fun inhaltText(e: Eintrag): CharSequence {
+    /**
+     * Buchsatz für Aufnahme und Tagesübersicht: Absätze mit kleinem Abstand statt Leerzeilen, hängende Einzüge für
+     * Aufzählungen und Kästchen, Markdown der Notizen (Überschriften, Punkte, Checklisten „- [ ]“).
+     */
+    private inner class Satz {
         val b = SpannableStringBuilder()
-        val messen = TextPaint().apply { typeface = normal; textSize = sp(18f) }
+        private val messen = TextPaint().apply { typeface = normal; textSize = sp(18f) }
+
         /** Kleiner Abstand zwischen Absätzen (eine niedrige Leerzeile statt einer ganzen). */
         fun luecke() {
             if (b.isEmpty()) return
@@ -779,6 +928,7 @@ class LiteActivity : Activity() {
             b.append("\n")
             b.setSpan(AbsoluteSizeSpan(sp(9f).toInt()), s, b.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
+
         /** Ein Absatz; einzug = hängender Einzug für Folgezeilen (Aufzählungen, Kästchen). */
         fun absatz(t: CharSequence, groesse: Float, dick: Boolean = false, abstandVorher: Boolean = true, einzug: Int = 0) {
             if (abstandVorher) luecke()
@@ -790,47 +940,83 @@ class LiteActivity : Activity() {
             if (einzug > 0) b.setSpan(android.text.style.LeadingMarginSpan.Standard(0, einzug), start, b.length,
                 Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        absatz(e.titel, 23f, dick = true, abstandVorher = false)
-        absatz(listOfNotNull(e.dauerText().ifBlank { null }, e.stand).joinToString(" · ").ifBlank { " " }, 15f, abstandVorher = false)
-        val erg = e.erg ?: return b
-        if (!e.hatInhalt) {
-            absatz("Der Laptop hat in dieser Aufnahme nichts zum Merken gefunden.", 18f)
-            return b
+
+        /** Zeile mit gezeichnetem Kästchen vorn; Folgezeilen stehen unter dem Text, nicht unter dem Kästchen. */
+        fun kaestchenZeile(text: String, erledigt: Boolean = false) {
+            val start = b.length
+            b.append("  ")
+            getDrawable(if (erledigt) R.drawable.kasten_voll else R.drawable.kasten)?.let { d ->
+                val g = sp(17f).toInt()
+                d.setBounds(0, 0, g, g)
+                b.setSpan(ImageSpan(d, ImageSpan.ALIGN_BASELINE), start, start + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            b.append(text)
+            b.setSpan(AbsoluteSizeSpan(sp(18f).toInt()), start, b.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            b.setSpan(TypefaceSpan(normal), start, b.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            b.append("\n")
+            b.setSpan(android.text.style.LeadingMarginSpan.Standard(0, sp(17f).toInt() + messen.measureText(" ").toInt()),
+                start, b.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        e.kurz?.let { if (it != e.titel) absatz(it, 18f) }
+
+        fun markdown(inhalt: String) {
+            var vorherPunkt = false
+            val punktEinzug = messen.measureText("•  ").toInt()
+            val punkt = Regex("^\\s*[-*]\\s+")
+            val haken = Regex("^\\s*[-*]\\s+\\[([ xX])]\\s*")
+            for (z in inhalt.lines()) {
+                val zeile = z.trimEnd().replace("**", "")
+                val istPunkt = punkt.containsMatchIn(zeile)
+                when {
+                    zeile.isBlank() -> {}
+                    zeile.trimStart().startsWith("#") -> absatz(zeile.trimStart('#', ' '), 18f, dick = true)
+                    haken.containsMatchIn(zeile) -> {
+                        if (!vorherPunkt) luecke()
+                        val m = haken.find(zeile)!!
+                        kaestchenZeile(zeile.substring(m.range.last + 1), erledigt = m.groupValues[1].isNotBlank())
+                    }
+                    istPunkt -> absatz(zeile.replace(punkt, "•  "), 18f, abstandVorher = !vorherPunkt, einzug = punktEinzug)
+                    else -> absatz(zeile, 18f)
+                }
+                if (zeile.isNotBlank()) vorherPunkt = istPunkt
+            }
+        }
+    }
+
+    private fun inhaltText(e: Eintrag): CharSequence {
+        val s = Satz()
+        s.absatz(e.titel, 23f, dick = true, abstandVorher = false)
+        val markiert = e.info.optJSONArray("markierungen")?.length() ?: 0
+        val meta = listOfNotNull(
+            e.dauerText().ifBlank { null },
+            when (markiert) { 0 -> null; 1 -> "1 Stelle markiert"; else -> "$markiert Stellen markiert" },
+            e.stand,
+        )
+        s.absatz(meta.joinToString(" · ").ifBlank { " " }, 15f, abstandVorher = false)
+        val erg = e.erg ?: return s.b
+        if (!e.hatInhalt) {
+            s.absatz("Der Laptop hat in dieser Aufnahme nichts zum Merken gefunden.", 18f)
+            return s.b
+        }
+        e.kurz?.let { if (it != e.titel) s.absatz(it, 18f) }
 
         val aufgaben = erg.optJSONArray("aufgaben")
         if (aufgaben != null && aufgaben.length() > 0) {
-            absatz("Aufgaben", 18f, dick = true)
+            s.absatz("Aufgaben", 18f, dick = true)
             for (i in 0 until aufgaben.length()) {
                 val a = aufgaben.optJSONObject(i) ?: continue
                 if (a.optString("art") == "erledigt") continue
-                val start = b.length
-                b.append("  ")
-                getDrawable(R.drawable.kasten)?.let { d ->
-                    val g = sp(17f).toInt()
-                    d.setBounds(0, 0, g, g)
-                    b.setSpan(ImageSpan(d, ImageSpan.ALIGN_BASELINE), start, start + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                }
                 val frist = a.optString("frist").takeIf { it.length >= 10 }?.let {
                     try {
-                        val d = SimpleDateFormat(if (it.length >= 16) "yyyy-MM-dd'T'HH:mm" else "yyyy-MM-dd", Locale.ROOT)
-                            .parse(it.take(16))!!
-                        " · " + tag(d, mitZeit(d))
+                        " · " + tag(SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).parse(it.take(10))!!, false) // nie Uhrzeit
                     } catch (_: Exception) { "" }
                 } ?: ""
-                b.append(a.optString("text") + frist)
-                b.setSpan(AbsoluteSizeSpan(sp(18f).toInt()), start, b.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                b.setSpan(TypefaceSpan(normal), start, b.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                b.append("\n")
-                b.setSpan(android.text.style.LeadingMarginSpan.Standard(0, sp(17f).toInt() + messen.measureText(" ").toInt()),
-                    start, b.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                s.kaestchenZeile(a.optString("text") + frist)
             }
         }
         val einkauf = erg.optJSONArray("einkauf")
         if (einkauf != null && einkauf.length() > 0) {
-            absatz("Einkauf", 18f, dick = true)
-            absatz((0 until einkauf.length()).mapNotNull { einkauf.optJSONObject(it)?.optString("sache") }.joinToString(", "),
+            s.absatz("Einkauf", 18f, dick = true)
+            s.absatz((0 until einkauf.length()).mapNotNull { einkauf.optJSONObject(it)?.optString("sache") }.joinToString(", "),
                 18f, abstandVorher = false)
         }
         val notizen = erg.optJSONArray("notizen")
@@ -838,22 +1024,33 @@ class LiteActivity : Activity() {
             val n = notizen.optJSONObject(i) ?: continue
             val inhalt = n.optString("inhalt")
             if (inhalt.isBlank()) continue
-            if (notizen.length() > 1 || n.optString("titel") != e.titel) absatz(n.optString("titel"), 19f, dick = true)
-            var ersteZeile = true
-            val punktEinzug = messen.measureText("•  ").toInt()
-            for (z in inhalt.lines()) {
-                val zeile = z.trimEnd().replace("**", "")
-                when {
-                    zeile.isBlank() -> {}
-                    zeile.trimStart().startsWith("#") -> absatz(zeile.trimStart('#', ' '), 18f, dick = true)
-                    Regex("^\\s*[-*]\\s+").containsMatchIn(zeile) ->
-                        absatz(zeile.replace(Regex("^\\s*[-*]\\s+"), "•  "), 18f, abstandVorher = ersteZeile, einzug = punktEinzug)
-                    else -> absatz(zeile, 18f, abstandVorher = true)
-                }
-                ersteZeile = false
-            }
+            if (notizen.length() > 1 || n.optString("titel") != e.titel) s.absatz(n.optString("titel"), 19f, dick = true)
+            s.markdown(inhalt)
         }
-        return b
+        return s.b
+    }
+
+    // ----- Tagesübersicht (vom Laptop, am Morgen nach dem Tag): ganz, wie im Buch
+
+    private fun uebersichtVon(tag: String): org.json.JSONObject? =
+        Lager.json(Lager.uebersicht(this, tag))?.takeIf {
+            it.optString("status") == "fertig" && it.optString("inhalt").isNotBlank() && it.optString("inhalt") != "null"
+        }
+
+    private fun tagDatum(tag: String): Date? = try {
+        SimpleDateFormat("yyyy-MM-dd", Locale.ROOT).parse(tag)
+    } catch (_: Exception) { null }
+
+    private fun uebersichtSeite(tag: String?) {
+        val ue = tag?.let { uebersichtVon(it) }
+        if (ue == null) { zurueck(); return }
+        val titel = tagDatum(tag)?.let { SimpleDateFormat("EEEE, d. MMMM", Locale.GERMANY).format(it) } ?: tag
+        rahmen(kopf(titel, zurueckPfeil = true)) { breite, hoehe ->
+            val s = Satz()
+            s.absatz(ue.optString("titel"), 23f, dick = true, abstandVorher = false)
+            s.markdown(ue.optString("inhalt"))
+            buchSeite(s.b, breite, hoehe)
+        }
     }
 
     /**

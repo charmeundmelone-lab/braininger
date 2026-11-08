@@ -40,6 +40,9 @@ object Lager {
         }
     }
 
+    /** Tagesübersicht vom Laptop: files/uebersichten/<JJJJ-MM-TT>.json (gleiches Format wie im Drive). */
+    fun uebersicht(c: Context, tag: String): File = File(File(c.filesDir, "uebersichten").apply { mkdirs() }, "$tag.json")
+
     fun gesendet(o: File): Boolean = json(File(o, "lite.json"))?.optBoolean("gesendet") == true
     fun alsGesendet(o: File) = schreiben(File(o, "lite.json"), JSONObject().put("gesendet", true).toString())
 

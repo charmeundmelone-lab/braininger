@@ -46,6 +46,7 @@ class AufnahmeDienst : Service() {
         private const val STOPP = "stopp"
         private const val BEREIT = "bereit"
         private const val UMSCHALTEN = "umschalten"
+        private const val MARKIEREN = "markieren"
         private const val KANAL = "aufnahme"
         private const val KANAL_BEREIT = "bereit"
 
@@ -61,6 +62,9 @@ class AufnahmeDienst : Service() {
             private set
         /** Stille kommt von Android selbst (Dienst ohne Mikrofon-Erlaubnis gestartet, z. B. nach Neustart). */
         @Volatile var gesperrt = false
+            private set
+        /** Wie oft in der laufenden Aufnahme „das war wichtig“ markiert wurde. */
+        @Volatile var markiert = 0
             private set
         private val beobachter = mutableSetOf<() -> Unit>()
 
@@ -80,6 +84,8 @@ class AufnahmeDienst : Service() {
         fun stoppen(c: Context) { if (laeuft) senden(c, STOPP) }
         /** Lauter-Taste in der App gehalten. */
         fun umschalten(c: Context) = senden(c, UMSCHALTEN, taste = true)
+        /** Lauter-Taste in der App kurz gedrückt, während eine Aufnahme läuft. */
+        fun markieren(c: Context) { if (laeuft) senden(c, MARKIEREN) }
 
         /** Dienst bereithalten (beim Öffnen der App, nach Neustart, nach Update). */
         fun bereitHalten(c: Context) {
@@ -111,6 +117,7 @@ class AufnahmeDienst : Service() {
             START -> if (!laeuft) beginnen(taste)
             STOPP -> if (laeuft) beenden(taste)
             UMSCHALTEN -> umschalten()
+            MARKIEREN -> markieren()
         }
         return START_STICKY
     }
@@ -129,7 +136,7 @@ class AufnahmeDienst : Service() {
             )
             Notification.Builder(this, KANAL)
                 .setContentTitle("Aufnahme läuft seit " + SimpleDateFormat("HH:mm", Locale.GERMANY).format(start))
-                .setContentText("Stoppen: Lauter-Taste 1 Sekunde halten")
+                .setContentText("Lauter-Taste: kurz = markieren, halten = stoppen" + if (markiert > 0) " · $markiert markiert" else "")
                 .addAction(Notification.Action.Builder(null, "STOPP", stopp).build())
         } else {
             nm.createNotificationChannel(NotificationChannel(KANAL_BEREIT, "Bereit", NotificationManager.IMPORTANCE_MIN))
@@ -215,7 +222,7 @@ class AufnahmeDienst : Service() {
             else -> {
                 val warKurz = gedrueckt && !ausgeloest
                 abbrechen()
-                if (warKurz) lautstaerke(AudioManager.ADJUST_RAISE)
+                if (warKurz) { if (laeuft) markieren() else lautstaerke(AudioManager.ADJUST_RAISE) }
             }
         }
     }
@@ -234,6 +241,24 @@ class AufnahmeDienst : Service() {
 
     private fun umschalten() {
         if (laeuft) beenden(taste = true) else beginnen(taste = true)
+    }
+
+    /**
+     * „Das war wichtig“: Sekunde ab Beginn in info.json → markierungen. Das Laptop-Programm liest sie schon und sagt
+     * Claude, an welchen Stellen Jan markiert hat (auswertung.prompt_bauen).
+     */
+    private fun markieren() {
+        if (!laeuft || recorder == null) return
+        val sekunde = Math.round((System.currentTimeMillis() - start.time) / 100.0) / 10.0
+        synchronized(this) {
+            info?.getJSONArray("markierungen")?.put(sekunde)
+            infoSchreiben()
+        }
+        markiert++
+        Summer.markiert(this)
+        Lager.protokoll(this, "Markierung bei ${sekunde.toInt() / 60}:${"%02d".format(sekunde.toInt() % 60)}")
+        vordergrund()
+        melden()
     }
 
     // ---------------------------------------------------------------- Aufnahme
@@ -258,6 +283,7 @@ class AufnahmeDienst : Service() {
         start = Date()
         stumm = false
         gesperrt = false
+        markiert = 0
         val id = SimpleDateFormat("yyyy-MM-dd_HHmmss", Locale.ROOT).format(start) + "_gedanke"
         val o = File(Lager.ordner(this), id).apply { mkdirs() }
         ordner = o

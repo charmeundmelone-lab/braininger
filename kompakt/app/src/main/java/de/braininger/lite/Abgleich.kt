@@ -42,7 +42,9 @@ object Abgleich {
                     geholt++
                 }
             }
-            val meldung = "Laptop erreicht ($basis): $gesendet gesendet, $geholt Ergebnisse"
+            val tage = uebersichtenHolen(c, basis, schluessel)
+            val meldung = "Laptop erreicht ($basis): $gesendet gesendet, $geholt Ergebnisse" +
+                if (tage > 0) ", $tage Tagesübersichten" else ""
             Lager.protokoll(c, meldung)
             return meldung
         } catch (e: Exception) {
@@ -51,6 +53,30 @@ object Abgleich {
         } finally {
             laeuft.set(false)
         }
+    }
+
+    /**
+     * Tagesübersichten fürs Tagebuch: der Laptop schreibt sie am Morgen nach einem Tag (laptop/braininger/
+     * tagesuebersicht.py). Geholt wird jeder vergangene Tag der letzten 60, solange es noch keine fertige Übersicht
+     * gibt oder sie weniger fertige Aufnahmen kennt als der Kompakt. Rückgabe: Zahl neu geholter fertiger Übersichten.
+     */
+    private fun uebersichtenHolen(c: Context, basis: String, schluessel: String): Int {
+        val fmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT)
+        val heute = fmt.format(java.util.Date())
+        val grenze = fmt.format(java.util.Date(System.currentTimeMillis() - 60L * 24 * 3600 * 1000))
+        var neu = 0
+        for ((tag, ordner) in Lager.aufnahmen(c).groupBy { it.name.take(10) }) {
+            if (tag >= heute || tag < grenze) continue
+            val datei = Lager.uebersicht(c, tag)
+            val alt = Lager.json(datei)
+            val fertige = ordner.count { Lager.json(File(it, "ergebnis.json"))?.optString("status") == "fertig" }
+            if (alt?.optString("status") == "fertig" && (alt.optJSONArray("aufnahmen")?.length() ?: 0) >= fertige) continue
+            val text = holen("$basis/lite/uebersicht/$tag", schluessel) ?: continue
+            val j = try { org.json.JSONObject(text) } catch (_: Exception) { continue }
+            Lager.schreiben(datei, text)
+            if (j.optString("status") == "fertig" && alt?.optString("status") != "fertig") neu++
+        }
+        return neu
     }
 
     private fun verbindung(url: String, schluessel: String, methode: String): HttpURLConnection =

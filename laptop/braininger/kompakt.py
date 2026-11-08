@@ -35,6 +35,8 @@ PAKET = "de.braininger.lite"
 ID_MUSTER = re.compile(r"\d{4}-\d{2}-\d{2}_\d{6}_gedanke")
 DATEI_MUSTER = re.compile(r"teil_\d{3}\.m4a|info\.json")
 GROESSTE_DATEI = 600 * 1024 * 1024  # 5-Minuten-Stücke sind ca. 2,5 MB, das hier ist reichlich
+TAG_MUSTER = re.compile(r"\d{4}-\d{2}-\d{2}")
+UEBERSICHTEN = EINGANG.parent / "Uebersichten"  # wie tagesuebersicht.UEBERSICHTEN
 KABEL_PRUEFEN_S = 10
 ABGLEICH_ANSTOSSEN_S = 60
 
@@ -89,6 +91,15 @@ class Empfang(BaseHTTPRequestHandler):
             if not text.strip():
                 return self._antwort(404, "{}")
             return self._antwort(200, text)
+        if len(t) == 3 and t[:2] == ["lite", "uebersicht"] and TAG_MUSTER.fullmatch(t[2]):
+            try:
+                text = (UEBERSICHTEN / f"{t[2]}.json").read_text(encoding="utf-8")
+            except OSError:
+                uebersicht_anmelden(t[2])  # z. B. Tage von vor dieser Funktion: jetzt nachholen
+                text = ""
+            if not text.strip():
+                return self._antwort(404, "{}")
+            return self._antwort(200, text)
         self._antwort(404, "{}")
 
     def do_PUT(self):
@@ -125,7 +136,26 @@ class Empfang(BaseHTTPRequestHandler):
         os.replace(tmp, ordner / t[3])
         if t[3] == "info.json":
             log.info("%s: Aufnahme vom Kompakt empfangen", t[2])
+            uebersicht_anmelden(t[2][:10])
         self._antwort(200, '{"ok":true}')
+
+
+def uebersicht_anmelden(tag: str) -> None:
+    """Platzhalter Uebersichten/<tag>.json anlegen, wie es die große App tut. Nur für Tage, an denen eine Datei da
+    ist, schreibt tagesuebersicht.pruefen() eine Übersicht (am Morgen danach, wenn alles ausgewertet ist).
+    Ohne Platzhalter gab es für Kompakt-Tage nie eine Tagesübersicht (gesehen am 8.11.2026)."""
+    datei = UEBERSICHTEN / f"{tag}.json"
+    if datei.exists() or not TAG_MUSTER.fullmatch(tag):
+        return
+    try:
+        if not any(p.name.startswith(tag) for p in EINGANG.iterdir() if p.is_dir()):
+            return  # nur Tage mit Aufnahmen
+        UEBERSICHTEN.mkdir(parents=True, exist_ok=True)
+        datei.write_text(json.dumps({"version": 1, "datum": tag, "status": "offen", "titel": None, "inhalt": None,
+                                     "aufnahmen": []}, ensure_ascii=False, indent=1), encoding="utf-8")
+        log.info("Tagesübersicht %s angemeldet (Kompakt)", tag)
+    except OSError:
+        log.debug("Tagesübersicht %s: Platzhalter ging nicht", tag, exc_info=True)
 
 
 def adb(*args: str, geraet: bool = True) -> subprocess.CompletedProcess:
