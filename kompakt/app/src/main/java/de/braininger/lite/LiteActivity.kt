@@ -531,28 +531,49 @@ class LiteActivity : Activity() {
     // ----- Aufgaben
 
     /**
-     * Alle Aufgaben kompakt, nach Tagen gruppiert, damit möglichst alles auf eine Seite passt: zweizeilig, wenn das
-     * auf eine Seite passt (dann ist fast jede Aufgabe ganz lesbar), sonst einzeilig.
-     * Antippen klappt eine Aufgabe auf: ganzer Text, Frist, aus welcher Aufnahme. Das Kästchen hakt ab.
+     * Alle Aufgaben kompakt, nach Tagen gruppiert, damit möglichst alles auf eine Seite passt. Erst einzeilig; der
+     * übrige Platz geht der Reihe nach an offene Aufgaben, die zweizeilig ganz lesbar werden, solange alles auf die
+     * Seite passt. Antippen klappt eine Aufgabe auf: ganzer Text, Frist, aus welcher Aufnahme. Das Kästchen hakt ab.
      */
     private fun aufgabenSeite(alle: List<Eintrag>) {
         val liste = Daten.aufgaben(this, alle)
         if (liste.none { it.schluessel == offeneAufgabe }) offeneAufgabe = null
         val offenZahl = liste.count { !it.erledigt }
         rahmen(kopf("Aufgaben", if (offenZahl > 0) "$offenZahl offen" else null, zurueckPfeil = true)) { breite, hoehe ->
-            var (zeilen, fokus) = aufgabenZeilen(liste, 2)
-            val gesamt = zeilen.sumOf {
-                it.measure(View.MeasureSpec.makeMeasureSpec(breite, View.MeasureSpec.EXACTLY),
+            fun hoeheVon(v: View): Int {
+                v.measure(View.MeasureSpec.makeMeasureSpec(breite, View.MeasureSpec.EXACTLY),
                     View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
-                it.measuredHeight
+                return v.measuredHeight
             }
-            if (gesamt > hoehe) aufgabenZeilen(liste, 1).let { zeilen = it.first; fokus = it.second }
+            val zweizeilig = mutableSetOf<String>()
+            var gesamt = aufgabenZeilen(liste, zweizeilig).first.sumOf { hoeheVon(it) }
+            if (gesamt <= hoehe) for (a in liste) {
+                if (a.erledigt || a.schluessel == offeneAufgabe) continue
+                val mehr = hoeheVon(aufgabeZeile(a, rechtsText(a), false, 2)) - hoeheVon(aufgabeZeile(a, rechtsText(a), false, 1))
+                if (mehr > 0 && gesamt + mehr <= hoehe) {
+                    zweizeilig += a.schluessel
+                    gesamt += mehr
+                }
+            }
+            val (zeilen, fokus) = aufgabenZeilen(liste, zweizeilig)
             liste(zeilen, "Nichts offen. Schön.", fokus)(breite, hoehe)
         }
     }
 
+    /** Rechts in der Zeile: Datum bei überfälligen und späteren Aufgaben, Uhrzeit bei heute und morgen. */
+    private fun rechtsText(a: Aufgabe): String? {
+        val f = a.frist ?: return null
+        if (a.erledigt) return null
+        val tage = tageBis(f)
+        return when {
+            tage < 0 || tage > 1 -> SimpleDateFormat("EE d.M.", Locale.GERMANY).format(f)
+            mitZeit(f) -> SimpleDateFormat("HH:mm", Locale.GERMANY).format(f)
+            else -> null
+        }
+    }
+
     /** Zeilen samt Zwischenüberschriften; zweites Ergebnis ist die aufgeklappte Zeile. */
-    private fun aufgabenZeilen(liste: List<Aufgabe>, maxZeilen: Int): Pair<List<View>, View?> {
+    private fun aufgabenZeilen(liste: List<Aufgabe>, zweizeilig: Set<String>): Pair<List<View>, View?> {
         val zeilen = mutableListOf<View>()
         var fokus: View? = null
         var letzteGruppe: String? = null
@@ -570,15 +591,8 @@ class LiteActivity : Activity() {
                 zeilen += ueberschrift(gruppe)
                 letzteGruppe = gruppe
             }
-            val f = a.frist
-            val rechts = when {
-                f == null || a.erledigt -> null
-                tage!! < 0 || tage > 1 -> SimpleDateFormat("EE d.M.", Locale.GERMANY).format(f)
-                mitZeit(f) -> SimpleDateFormat("HH:mm", Locale.GERMANY).format(f)
-                else -> null
-            }
             val offen = a.schluessel == offeneAufgabe
-            val z = aufgabeZeile(a, rechts, offen, maxZeilen)
+            val z = aufgabeZeile(a, rechtsText(a), offen, if (a.schluessel in zweizeilig) 2 else 1)
             if (offen) fokus = z
             zeilen += z
         }
