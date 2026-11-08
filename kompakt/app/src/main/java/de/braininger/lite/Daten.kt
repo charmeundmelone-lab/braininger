@@ -29,6 +29,28 @@ class Eintrag(val ordner: File, val info: JSONObject, val roh: JSONObject?) {
                 (e.optJSONArray("aufgaben")?.length() ?: 0) > 0 || (e.optJSONArray("einkauf")?.length() ?: 0) > 0
         }
 
+    /**
+     * Nur eine Einkaufs-Ansage („Einkauf: Milch, Eier“, Grill Einkauf 2.11.: nur Liste, keine Notiz): Einkäufe, keine
+     * Aufgabe, und die Aufnahme beginnt mit „Einkauf“ oder hat sonst nichts Verwertbares. Im Tagebuch eine leise Zeile.
+     */
+    val nurEinkauf: Boolean
+        get() {
+            val e = erg ?: return false
+            if ((e.optJSONArray("einkauf")?.length() ?: 0) == 0) return false
+            val aufgaben = e.optJSONArray("aufgaben")
+            if (aufgaben != null && (0 until aufgaben.length()).any { aufgaben.optJSONObject(it)?.optString("art") != "erledigt" }) return false
+            val anfang = e.optJSONArray("abschnitte")?.optJSONObject(0)?.optString("text").orEmpty().trim().lowercase()
+            val notiz = e.optJSONArray("notizen")?.optJSONObject(0)?.optString("titel").orEmpty()
+            return anfang.startsWith("einkauf") || notiz.isBlank() || notiz.startsWith("Kein verwertbarer")
+        }
+
+    /** „Milch, Eier, Hafermilch“ */
+    fun einkaufText(): String {
+        val a = erg?.optJSONArray("einkauf") ?: return ""
+        return (0 until a.length()).mapNotNull { a.optJSONObject(it)?.optString("sache")?.takeIf { s -> s.isNotBlank() } }
+            .joinToString(", ")
+    }
+
     val titel: String
         get() {
             if (laeuft) return "Aufnahme läuft"
@@ -169,6 +191,9 @@ object Daten {
             if (s.abgehakt) remove(s.schluessel) else putString(s.schluessel, "ja")
         }.apply()
     }
+
+    /** „Rückgängig“ im Laden: die Sache ist wieder offen. */
+    fun sacheOeffnen(c: Context, s: Sache) = c.getSharedPreferences(PREFS, 0).edit().remove(s.schluessel).apply()
 
     fun abgehakteWeg(c: Context, alle: List<Sache>) {
         c.getSharedPreferences(PREFS, 0).edit().apply {

@@ -50,7 +50,7 @@ class LiteActivity : Activity() {
         const val TAGESKOPF = "tageskopf" // beginnt immer eine neue Seite
     }
 
-    private enum class Ansicht { START, AUFGABEN, EINKAUF, AUFNAHMEN, AUFNAHME, UEBERSICHT }
+    private enum class Ansicht { START, AUFGABEN, EINKAUF, LADEN, AUFNAHMEN, AUFNAHME, UEBERSICHT }
 
     private var ansicht = Ansicht.START
     private var seite = 0
@@ -61,6 +61,7 @@ class LiteActivity : Activity() {
     private var gewaehlt: String? = null
     private var offeneAufgabe: String? = null // aufgeklappte Aufgabe
     private val leereOffen = mutableSetOf<String>() // Tage, deren leere Aufnahmen aufgeklappt sind
+    private var ladenLetzte: Sache? = null // im Laden zuletzt in den Korb gelegt (für „Rückgängig“)
     private var abgleichLaeuft = false
     private var lauterGehalten = false
     private val lauterHalten = Runnable {
@@ -205,6 +206,9 @@ class LiteActivity : Activity() {
         if (ansicht == Ansicht.AUFNAHME || ansicht == Ansicht.UEBERSICHT) {
             ansicht = zurueckZu
             seite = zurueckSeite
+        } else if (ansicht == Ansicht.LADEN) {
+            ansicht = Ansicht.EINKAUF
+            seite = 0
         } else {
             ansicht = Ansicht.START
             seite = 0
@@ -402,11 +406,15 @@ class LiteActivity : Activity() {
     private fun zeichnen() {
         if (wurzel.height == 0) { wurzel.post { zeichnen() }; return }
         wurzel.removeAllViews()
+        // im Laden bleibt der Bildschirm an (E-Ink braucht dafür kaum Strom), sonst wie immer
+        if (ansicht == Ansicht.LADEN) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val alle = Daten.eintraege(this)
         when (ansicht) {
             Ansicht.START -> start(alle)
             Ansicht.AUFGABEN -> aufgabenSeite(alle)
             Ansicht.EINKAUF -> einkaufSeite(alle)
+            Ansicht.LADEN -> ladenSeite(alle)
             Ansicht.AUFNAHMEN -> tagebuch(alle)
             Ansicht.UEBERSICHT -> uebersichtSeite(gewaehlt)
             Ansicht.AUFNAHME -> {
@@ -747,16 +755,17 @@ class LiteActivity : Activity() {
 
     // ----- Einkauf: nach Abteilungen im Laden, Antippen hakt ab
 
+    /** Supermarkt nach Gängen, andere Läden (dm, Bäcker, Baumarkt) unter ihrem Namen. */
+    private fun gruppeVon(s: Sache) = when {
+        s.abgehakt -> "Im Korb"
+        s.laden != "Supermarkt" -> s.laden
+        else -> Daten.ABTEILUNGEN.getOrElse(s.abteilung) { "Sonstiges" }
+    }
+
     private fun einkaufSeite(alle: List<Eintrag>) {
         val sachen = Daten.einkauf(this, alle)
         val zeilen = mutableListOf<View>()
         var letzteGruppe: String? = null
-        // Supermarkt nach Gängen, andere Läden (dm, Bäcker, Baumarkt) unter ihrem Namen
-        fun gruppeVon(s: Sache) = when {
-            s.abgehakt -> "Im Korb"
-            s.laden != "Supermarkt" -> s.laden
-            else -> Daten.ABTEILUNGEN.getOrElse(s.abteilung) { "Sonstiges" }
-        }
         val mitUeberschriften = sachen.map { gruppeVon(it) }.distinct().size > 1 // eine einzige Gruppe braucht keine
         for (s in sachen) {
             val gruppe = gruppeVon(s)
@@ -770,19 +779,98 @@ class LiteActivity : Activity() {
             }
         }
         if (sachen.any { it.abgehakt }) {
-            zeilen += text("Abgehakte entfernen", 18f, dick = true).apply {
-                gravity = Gravity.CENTER
-                setPadding(0, dp(14), 0, dp(14))
-                background = GradientDrawable().apply { cornerRadius = dpf(12f); setColor(Color.WHITE); setStroke(dp(2), Color.BLACK) }
-                layoutParams = breit()
-                setOnClickListener {
-                    Daten.abgehakteWeg(this@LiteActivity, sachen)
-                    seite = 0
-                    zeichnen()
-                }
-            }.let { knopf -> FrameLayout(this).apply { setPadding(0, dp(16), 0, dp(4)); addView(knopf) } }
+            zeilen += leiseZeile("Abgehakte entfernen", R.drawable.pfeil_rechts, einzug = 0) {
+                Daten.abgehakteWeg(this@LiteActivity, sachen)
+                seite = 0
+                zeichnen()
+            }
         }
-        rahmen(kopf("Einkauf", zurueckPfeil = true), inhalt = liste(zeilen, "Die Liste ist leer."))
+        val offen = sachen.filter { !it.abgehakt }
+        rahmen(kopf("Einkauf", zurueckPfeil = true), unten = einkaufKnoepfe(offen), inhalt = liste(zeilen, "Die Liste ist leer."))
+    }
+
+    /** Unten fest: „Im Laden“ (schwarz) und „Teilen“ (umrandet), nur wenn etwas offen ist. */
+    private fun einkaufKnoepfe(offen: List<Sache>): View? {
+        if (offen.isEmpty()) return null
+        fun knopf(t: String, voll: Boolean, aktion: () -> Unit) = text(t, 18f, dick = true, farbe = if (voll) Color.WHITE else Color.BLACK).apply {
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                cornerRadius = dpf(14f)
+                setColor(if (voll) Color.BLACK else Color.WHITE)
+                setStroke(dp(2), Color.BLACK)
+            }
+            setOnClickListener { aktion() }
+        }
+        return LinearLayout(this).apply {
+            setPadding(dp(16), dp(8), dp(16), dp(10))
+            addView(knopf("Im Laden", true) { ladenLetzte = null; oeffnen(Ansicht.LADEN) },
+                LinearLayout.LayoutParams(0, dp(50), 1.4f))
+            addView(View(this@LiteActivity), LinearLayout.LayoutParams(dp(10), 1))
+            addView(knopf("Teilen", false) { teilen(offen) }, LinearLayout.LayoutParams(0, dp(50), 1f))
+        }
+    }
+
+    /**
+     * Im Laden: nur Offenes, groß, der Bildschirm bleibt an. Antippen legt die Sache still in den Korb (sie
+     * verschwindet aus dem Blick), unten steht „Rückgängig“ für die zuletzt getippte.
+     */
+    private fun ladenSeite(alle: List<Eintrag>) {
+        val offen = Daten.einkauf(this, alle).filter { !it.abgehakt }
+        val zeilen = mutableListOf<View>()
+        var letzteGruppe: String? = null
+        val mitUeberschriften = offen.map { gruppeVon(it) }.distinct().size > 1
+        for (s in offen) {
+            val gruppe = gruppeVon(s)
+            if (mitUeberschriften && gruppe != letzteGruppe) {
+                zeilen += ueberschrift(gruppe)
+                letzteGruppe = gruppe
+            }
+            zeilen += LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(LinearLayout(this@LiteActivity).apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(0, dp(14), 0, dp(14))
+                    addView(symbol(R.drawable.kasten, 30).apply {
+                        (layoutParams as LinearLayout.LayoutParams).rightMargin = dp(16)
+                    })
+                    addView(LinearLayout(this@LiteActivity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        addView(text(s.sache, 23f, dick = true))
+                        if (s.details.isNotBlank()) addView(text(s.details, 16f).apply { setPadding(0, dp(3), 0, 0) })
+                    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                    setOnClickListener {
+                        Daten.sacheUmschalten(this@LiteActivity, s)
+                        ladenLetzte = s
+                        zeichnen()
+                    }
+                }, breit())
+                addView(punktlinie())
+            }
+        }
+        val rueck = ladenLetzte?.let { s ->
+            leiseZeile("Rückgängig: ${s.sache}", null, einzug = dp(16)) {
+                Daten.sacheOeffnen(this@LiteActivity, s)
+                ladenLetzte = null
+                zeichnen()
+            }
+        }
+        rahmen(kopf("Im Laden", zurueckPfeil = true), unten = rueck, inhalt = liste(zeilen, "Alles im Korb."))
+    }
+
+    /** Alles Offene als ruhiger Text, nach Laden und Gang, über das Teilen-Fenster (z. B. WhatsApp an Anna). */
+    private fun teilen(offen: List<Sache>) {
+        val text = buildString {
+            append("Einkauf (").append(SimpleDateFormat("EE d.M.", Locale.GERMANY).format(Date())).append(")\n")
+            for ((gruppe, sachen) in offen.groupBy { gruppeVon(it) }) {
+                append("\n").append(gruppe).append("\n")
+                sachen.forEach { s -> append("– ").append(s.sache).append(if (s.details.isNotBlank()) " (${s.details})" else "").append("\n") }
+            }
+        }.trimEnd()
+        try {
+            startActivity(android.content.Intent.createChooser(
+                android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain")
+                    .putExtra(android.content.Intent.EXTRA_TEXT, text), "Einkaufsliste teilen"))
+        } catch (_: Exception) {}
     }
 
     /** Einkaufszeile: Kästchen, Sache, dahinter klein Menge/Details. Die ganze Zeile hakt ab (eine Hand im Laden). */
@@ -823,14 +911,19 @@ class LiteActivity : Activity() {
         // Nachträge stehen bei ihrem Gedanken, nicht als eigene Zeile
         val eigene = alle.filter { Daten.nachtragsZiel(this, it, alle) == null }
         for ((tag, eintraege) in eigene.groupBy { it.id.take(10) }) { // alle ist neu → alt sortiert
+            val hatNachtrag = { e: Eintrag -> Daten.nachtraegeVon(this, e, alle).isNotEmpty() }
+            // reine Einkaufs-Ansagen: leise Zeile, machen aus einem Tag noch kein Kapitel
+            val einkaeufe = eintraege.filter { it.nurEinkauf && !hatNachtrag(it) }
             val mitInhalt = eintraege.filter {
-                it.hatInhalt || it.stand != null || it.laeuft || Daten.nachtraegeVon(this, it, alle).isNotEmpty()
-            }.sortedBy { it.id }
-            val leer = eintraege.filter { it !in mitInhalt }.sortedBy { it.id }
+                it !in einkaeufe && (it.hatInhalt || it.stand != null || it.laeuft || hatNachtrag(it))
+            }
+            val leer = eintraege.filter { it !in mitInhalt && it !in einkaeufe }.sortedBy { it.id }
             zeilen += tagesKopf(tag, eigeneSeite = mitInhalt.isNotEmpty())
             val ue = uebersichtVon(tag)
-            if (ue != null && eintraege.any { it.hatInhalt }) zeilen += ueberblick(tag, ue)
-            mitInhalt.forEach { zeilen += tagebuchZeile(it, alle) }
+            if (ue != null && mitInhalt.any { it.hatInhalt }) zeilen += ueberblick(tag, ue)
+            for (e in (mitInhalt + einkaeufe).sortedBy { it.id }) {
+                zeilen += if (e in einkaeufe) einkaufsZeile(e) else tagebuchZeile(e, alle)
+            }
             if (leer.isNotEmpty()) {
                 if (tag in leereOffen) leer.forEach { zeilen += tagebuchZeile(it, alle) }
                 else zeilen += leiseZeile(if (leer.size == 1) "1 leere Aufnahme" else "${leer.size} leere Aufnahmen") {
@@ -944,11 +1037,34 @@ class LiteActivity : Activity() {
         addView(punktlinie())
     }
 
-    private fun leiseZeile(t: String, aktion: () -> Unit): View = LinearLayout(this).apply {
+    /** „18:20  Einkauf: Milch, Eier“: eine Einkaufs-Ansage, ruhig in der Zeitspalte, antippen öffnet sie trotzdem. */
+    private fun einkaufsZeile(e: Eintrag): View = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        addView(LinearLayout(this@LiteActivity).apply {
+            setPadding(0, dp(10), 0, dp(10))
+            addView(text(e.start?.let { SimpleDateFormat("HH:mm", Locale.GERMANY).format(it) } ?: "", 16f).apply {
+                fontFeatureSettings = "tnum"
+            }, LinearLayout.LayoutParams(dp(56), ViewGroup.LayoutParams.WRAP_CONTENT))
+            val t = SpannableStringBuilder("Einkauf: ").apply {
+                setSpan(TypefaceSpan(fett), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                append(e.einkaufText())
+            }
+            addView(text(t, 16f).apply {
+                maxLines = 2
+                ellipsize = TextUtils.TruncateAt.END
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            setOnClickListener { oeffnen(Ansicht.AUFNAHME, e.id) }
+        }, breit())
+        addView(punktlinie())
+    }
+
+    /** Leise, antippbare Zeile (z. B. „3 leere Aufnahmen ⌄“, „Rückgängig: Milch“). */
+    private fun leiseZeile(t: String, symbolRes: Int? = R.drawable.pfeil_unten, einzug: Int = dp(56), aktion: () -> Unit): View =
+        LinearLayout(this).apply {
         gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(56), dp(12), 0, dp(12))
-        addView(text(t, 15f))
-        addView(symbol(R.drawable.pfeil_unten, 18).apply {
+        setPadding(einzug, dp(12), 0, dp(12))
+        addView(text(t, 16f, dick = symbolRes == null))
+        if (symbolRes != null) addView(symbol(symbolRes, 18).apply {
             (layoutParams as LinearLayout.LayoutParams).leftMargin = dp(6)
         })
         setOnClickListener { aktion() }
