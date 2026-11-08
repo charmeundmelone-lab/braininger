@@ -100,7 +100,7 @@ class AufnahmeDienst : Service() {
         super.onCreate()
         tasteEinrichten()
         haupt.postDelayed({
-            Lager.protokoll(this, "Dienst bereit, Lauter-Taste aktiv" + if (mikrofonGesperrt()) " (Mikrofon noch gesperrt)" else "")
+            Lager.protokoll(this, "Dienst bereit, Lauter-Taste aktiv" + if (mikrofonGesperrt()) " (Mikrofon kommt mit dem ersten Tastendruck)" else "")
         }, 1000)
     }
 
@@ -135,8 +135,7 @@ class AufnahmeDienst : Service() {
             nm.createNotificationChannel(NotificationChannel(KANAL_BEREIT, "Bereit", NotificationManager.IMPORTANCE_MIN))
             Notification.Builder(this, KANAL_BEREIT)
                 .setContentTitle("Braininger ist bereit")
-                .setContentText(if (mikrofonGesperrt()) "Einmal Braininger öffnen, dann nimmt die Lauter-Taste auf"
-                    else "Aufnehmen: Lauter-Taste 1 Sekunde halten")
+                .setContentText("Aufnehmen: Lauter-Taste 1 Sekunde halten")
         }
             .setSmallIcon(R.drawable.symbol)
             .setOngoing(true)
@@ -147,8 +146,10 @@ class AufnahmeDienst : Service() {
     }
 
     /**
-     * Darf der Dienst gerade ans Mikrofon? Android erlaubt das nur, wenn er aus der sichtbaren App (oder einem
-     * erlaubten Anlass) gestartet wurde. Nur ein klares „nein“ zählt, im Zweifel gilt es als frei.
+     * Darf der Dienst gerade ans Mikrofon? Nach Neustart oder Update (Start im Hintergrund) zunächst nicht. Das ist
+     * kein Problem: Android prüft beim erneuten startForeground() (mehr als 10 s nach der letzten Prüfung) neu, und
+     * ein Tastendruck über die Mediensitzung gibt der App dafür kurz Vordergrund-Rechte (gemessen am 8.11.2026:
+     * allowWhileInUsePermissionInFgs false → true, Aufnahme nicht stumm). Nur fürs Protokoll.
      */
     private fun mikrofonGesperrt(): Boolean = try {
         getSystemService(android.app.AppOpsManager::class.java).unsafeCheckOpNoThrow(
@@ -280,6 +281,10 @@ class AufnahmeDienst : Service() {
             .put("geraet", "Mudita Kompakt")
         infoSchreiben()
 
+        // erst Vordergrund (mit Aufnahme-Hinweis), damit Android das Mikrofon freigibt, bevor der erste Ton kommt
+        laeuft = true
+        seit = start.time
+        vordergrund()
         sperre = getSystemService(PowerManager::class.java)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "braininger:aufnahme").apply { acquire(4 * 60 * 60 * 1000L) }
 
@@ -297,9 +302,6 @@ class AufnahmeDienst : Service() {
                 synchronized(this) { info?.getJSONArray("hinweise")?.put(meldung) }
             },
         ).also { it.start() }
-        laeuft = true
-        seit = start.time
-        vordergrund()
         if (taste) Summer.start(this)
         Lager.protokoll(this, "Aufnahme gestartet $id ($mikroName${if (taste) ", per Taste" else ""})")
         melden()

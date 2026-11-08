@@ -37,8 +37,13 @@ wieder dem System. In der App selbst übernimmt `LiteActivity.onKeyDown/onKeyUp`
 Getestet per virtueller HID-Taste (`hid`-Werkzeug, Verbraucher-Tasten 0xE9/0xEA) bei dunklem und hellem Bildschirm.
 Die echte Taste muss Jan einmal selbst probieren.
 
-Nach einem Neustart startet der Dienst über `BOOT_COMPLETED`. Falls Android ihm dann das Mikrofon noch nicht gibt, steht
-im Hinweis „Einmal Braininger öffnen“, und eine trotzdem gestartete Aufnahme warnt mit dreimal Vibrieren.
+Nach Neustart (`BOOT_COMPLETED`) oder Update (`MY_PACKAGE_REPLACED`) startet der Dienst im Hintergrund und hat zunächst
+kein Mikrofon-Recht (`allowWhileInUsePermissionInFgs=false`). Beim Tastendruck ruft `beginnen()` erneut `startForeground()`
+auf, Android prüft dann neu, und die Mediensitzung gibt der App in dem Moment Vordergrund-Rechte: gemessen am 8.11.2026
+false → true, Aufnahme nicht stumm. Sollte es doch einmal stumm sein, warnt die App mit dreimal Vibrieren.
+
+Apps, die die Lautstärketasten selbst nutzen (Books, Jans Blatt-/Claude-App), behalten sie: dort geht die Taste nicht,
+wohl aber bei dunklem Bildschirm, auf dem Startbildschirm und in Braininger selbst.
 
 ## Warum der Laptop auswertet
 Whisper large-v3-turbo braucht auf dem Nothing Phone (Snapdragon) schon 0,75–0,9 × Aufnahmelänge. Der Helio A22 hat nur
