@@ -76,6 +76,7 @@
             <intent-filter>
                 <action android:name="de.braininger.lite.EINRICHTEN" />
                 <action android:name="de.braininger.lite.ABGLEICHEN" />
+                <action android:name="de.braininger.lite.LOESCHEN" />
             </intent-filter>
         </receiver>
     </application>

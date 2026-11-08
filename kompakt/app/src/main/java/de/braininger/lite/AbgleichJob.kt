@@ -8,6 +8,7 @@ import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import java.io.File
 
 /** Abgleich im Hintergrund über den JobScheduler von Android (braucht keine Google-Dienste). */
 class AbgleichJob : JobService() {
@@ -82,6 +83,16 @@ class EinrichtungEmpfaenger : BroadcastReceiver() {
                 Lager.protokoll(c, "Eingerichtet: Adresse ${i.getStringExtra("adresse") ?: "-"}")
                 AbgleichJob.planen(c)
                 resultCode = 1
+            }
+            // Eine Aufnahme am Kompakt löschen (nur per adb, z. B. Testaufnahmen nach Jans OK). Endgültig.
+            "de.braininger.lite.LOESCHEN" -> {
+                val id = i.getStringExtra("id").orEmpty()
+                val ordner = File(Lager.ordner(c), id)
+                if (Regex("\\d{4}-\\d{2}-\\d{2}_\\d{6}_gedanke").matches(id) && ordner.isDirectory && !AufnahmeDienst.laeuft) {
+                    ordner.deleteRecursively()
+                    Lager.protokoll(c, "Gelöscht: $id")
+                    resultCode = 1
+                } else resultCode = 0
             }
             // Der Laptop sieht den Kompakt am Kabel (oder ein Ergebnis ist fertig) und stößt den Abgleich an.
             "de.braininger.lite.ABGLEICHEN" -> {
