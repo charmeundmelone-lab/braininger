@@ -9,8 +9,20 @@ keine Google-Dienste). Zweig `kompakt-lite`, gebaut von `.github/workflows/kompa
   Alles andere ist in Seiten geteilt, Blättern mit Pfeilen unten oder Lautstärketasten (kurz drücken). Passt eine
   Liste auf eine Seite, fällt die Blätterleiste weg. Eine Aufnahme liest sich wie ein Buch (StaticLayout mit deutscher
   Silbentrennung, an Zeilengrenzen in Seiten geschnitten).
-- Aufgaben: je eine Zeile, gruppiert (Überfällig, Heute, Morgen, Später, Ohne Termin, Erledigt). Antippen klappt eine
-  Aufgabe auf: ganzer Text, Frist, Bezug, Sprung in die Aufnahme. Kästchen hakt ab (nur lokal gespeichert).
+- Startseite wie ein Notizbuch-Umschlag: Wochentag klein in Versalien, Datum groß. Darunter Knopf, Aufgaben („Heute: …“),
+  Einkauf, Tagebuch.
+- Aufgaben in drei ruhigen Körben nach Jans Regeln (Grill Kalender/ADHS 20.10.2026): Heute, Diese Woche, Irgendwann.
+  Keine Uhrzeiten, keine Zahlen, kein „überfällig“: Liegengebliebenes steht unter Heute mit „seit Fr.“, eine Frist von
+  morgen wandert schon heute nach Heute. Freier Platz gibt Aufgaben zwei Zeilen. Antippen klappt auf (ganzer Text,
+  Frist, Bezug, Sprung in die Aufnahme), Kästchen hakt ab (nur lokal gespeichert).
+- Tagebuch: jeder Tag mit Inhalt ein Kapitel auf neuer Seite (VOR 2 TAGEN · Freitag · 6. November 2026 · kurzer Strich),
+  darunter der Tagesüberblick vom Laptop (ganz lesbar per Antippen) und die Gedanken mit Uhrzeit und Kurzsatz. Leere
+  Aufnahmen zugeklappt in einer leisen Zeile. Der Laptop legt für jeden Kompakt-Tag den Platzhalter
+  `Uebersichten/<tag>.json` an (ohne ihn schreibt `tagesuebersicht.py` nichts) und liefert sie per
+  `GET /lite/uebersicht/<tag>`. Fertig wird eine Übersicht am Morgen nach dem Tag, wenn der Laptop läuft.
+- Seitenpunkte statt „Seite 1 von 3“ (ab 8 Seiten „3 / 12“).
+- Markierung: Lauter kurz drücken, während eine Aufnahme läuft = „das war wichtig“ (ein kurzes Tippen als Vibration).
+  Landet als Sekunde in `info.json → markierungen`; das Laptop-Programm gibt sie Claude schon mit.
 - Einkauf nach Abteilungen im Laden, die ganze Zeile hakt ab, „Abgehakte entfernen“.
 - Aufnehmen: großer Knopf oder **Lauter-Taste 1 Sekunde halten** (auch bei dunklem Bildschirm, auch in anderen Apps,
   die die Taste nicht selbst nutzen). Start = einmal lang vibrieren, Stopp = zweimal kurz, stummes Mikrofon = dreimal lang.
@@ -67,6 +79,9 @@ WLAN ist bewusst aus: das Öffnen eines Ports im Netz hat der Auto-Mode blockier
 
 ## Offen
 - Echte Lauter-Taste von Jan probieren lassen, Offline+-Warnung mit echtem Schalter, Akku über einen Tag mit Dienst.
+- Geprüft und verworfen (8.11.): „Abgelegt“-Bildschirm nach dem Stoppen (Vibration reicht, E-Ink würde zweimal
+  flackern), Fragen an alle Notizen (Antwort käme erst am Kabel), Tageszeile auf der Startseite (steht im Tagebuch).
+  Einziger Kandidat: Nachsprechen (Taste in einer Aufnahme hängt einen Nachtrag an), braucht Zusammenführen am Laptop.
 - WLAN-Weg (braucht Jans Firewall-Klick), Ansteckmikrofon am USB-C.
 - Die alte Bedienungshilfe „Braininger Lite: Tasten“ (Headset-Taste) ist noch drin, aber unnötig, solange Jan kein
   Mikro mit Knopf hat.
