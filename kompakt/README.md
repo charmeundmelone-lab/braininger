@@ -21,6 +21,13 @@ keine Google-Dienste). Zweig `kompakt-lite`, gebaut von `.github/workflows/kompa
   `Uebersichten/<tag>.json` an (ohne ihn schreibt `tagesuebersicht.py` nichts) und liefert sie per
   `GET /lite/uebersicht/<tag>`. Fertig wird eine Übersicht am Morgen nach dem Tag, wenn der Laptop läuft.
 - Seitenpunkte statt „Seite 1 von 3“ (ab 8 Seiten „3 / 12“).
+- Nachtrag (8.11., auf Jans Wunsch nur per Knopf): Auf jeder Gedankenseite steht unten fest „Weitersprechen“. Die Aufnahme
+  bekommt `nachtrag_zu` in info.json, der Laptop legt den früheren Gedanken als Hinweis für Claude dazu
+  (`kompakt.nachtrag_zusammenhang`). Der alte Gedanke wird nie umgeschrieben (auch damit Häkchen nicht verrutschen);
+  der Nachtrag steht darunter („Nachtrag · Sonntag, 23:16“), im Tagebuch als „+ Nachtrag heute“. „Als eigenen
+  Gedanken führen“ und „Wieder als Nachtrag anhängen“ sind nur am Kompakt vermerkt (Einstellung `los:<id>`).
+- Einkauf: Supermarkt nach Gängen, andere Läden (dm, Bäcker) unter ihrem Namen. Der Laptop liefert Abteilungen als
+  Kennung (`kuehlregal`); bis 8.11. landete deshalb alles unter „Sonstiges“.
 - Markierung: Lauter kurz drücken, während eine Aufnahme läuft = „das war wichtig“ (ein kurzes Tippen als Vibration).
   Landet als Sekunde in `info.json → markierungen`; das Laptop-Programm gibt sie Claude schon mit.
 - Einkauf nach Abteilungen im Laden, die ganze Zeile hakt ab, „Abgehakte entfernen“.
@@ -81,7 +88,7 @@ WLAN ist bewusst aus: das Öffnen eines Ports im Netz hat der Auto-Mode blockier
 - Echte Lauter-Taste von Jan probieren lassen, Offline+-Warnung mit echtem Schalter, Akku über einen Tag mit Dienst.
 - Geprüft und verworfen (8.11.): „Abgelegt“-Bildschirm nach dem Stoppen (Vibration reicht, E-Ink würde zweimal
   flackern), Fragen an alle Notizen (Antwort käme erst am Kabel), Tageszeile auf der Startseite (steht im Tagebuch).
-  Einziger Kandidat: Nachsprechen (Taste in einer Aufnahme hängt einen Nachtrag an), braucht Zusammenführen am Laptop.
+  Nachsprechen ist inzwischen als Knopf „Weitersprechen“ gebaut.
 - WLAN-Weg (braucht Jans Firewall-Klick), Ansteckmikrofon am USB-C.
 - Die alte Bedienungshilfe „Braininger Lite: Tasten“ (Headset-Taste) ist noch drin, aber unnötig, solange Jan kein
   Mikro mit Knopf hat.

@@ -1099,7 +1099,8 @@ class LiteActivity : Activity() {
             s.luecke()
             val wann = n.start?.let { SimpleDateFormat("EEEE, HH:mm", Locale.GERMANY).format(it) } ?: ""
             s.absatz("Nachtrag · $wann", 19f, dick = true)
-            if (n.hatInhalt && n.titel != e.titel) s.absatz(n.titel, 18f, abstandVorher = false)
+            val nTitel = n.titel.replace(Regex("^Nachtrag\\s*[:–-]\\s*", RegexOption.IGNORE_CASE), "") // steht schon drüber
+            if (n.hatInhalt && nTitel != e.titel && nTitel.isNotBlank()) s.absatz(nTitel, 18f, abstandVorher = false)
             inhaltTeil(s, n, ohneMeta = n.stand == null)
             s.verweis("Als eigenen Gedanken führen") {
                 Daten.nachtragLoesen(this, n, true)
