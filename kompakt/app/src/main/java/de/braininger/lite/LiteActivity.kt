@@ -381,7 +381,10 @@ class LiteActivity : Activity() {
         seite = seite.coerceIn(0, seitenZahl - 1)
         LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            if (zeilen.isEmpty()) addView(text(leer, 18f).apply { setPadding(0, dp(12), 0, 0) })
+            if (zeilen.isEmpty()) {
+                gravity = Gravity.CENTER // leere Seite: ein ruhiger Satz in der Mitte
+                addView(text(leer, 19f).apply { gravity = Gravity.CENTER; setPadding(0, 0, 0, dp(40)) })
+            }
             seiten[seite].forEach { addView(it, breit()) }
         }
     }
@@ -823,7 +826,17 @@ class LiteActivity : Activity() {
         this.tag = if (eigeneSeite) TAGESKOPF else UEBERSCHRIFT
         val d = tagDatum(tag)
         val abstand = d?.let { tageBis(it) }
-        val oben = when (abstand) { 0 -> "Heute"; -1 -> "Gestern"; else -> null }
+        // kleine Zeile über jedem Tag, damit alle Kapitel gleich beginnen
+        val oben = when {
+            abstand == null -> null
+            abstand == 0 -> "Heute"
+            abstand == -1 -> "Gestern"
+            abstand == -2 -> "Vorgestern"
+            abstand > 0 -> null
+            abstand > -14 -> "Vor ${-abstand} Tagen"
+            abstand > -60 -> "Vor ${-abstand / 7} Wochen"
+            else -> SimpleDateFormat("MMMM yyyy", Locale.GERMANY).format(d!!)
+        }
         if (oben != null) addView(text(oben.uppercase(Locale.GERMANY), 13f, dick = true).apply {
             letterSpacing = 0.12f
             setPadding(0, 0, 0, dp(4))
@@ -881,9 +894,17 @@ class LiteActivity : Activity() {
             addView(LinearLayout(this@LiteActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(text(e.titel, 18f, dick = e.hatInhalt || e.laeuft).apply {
-                    maxLines = 2
+                    maxLines = 3
                     ellipsize = TextUtils.TruncateAt.END
                 })
+                // der Gedanke in einem Satz, wie ein Tagebucheintrag
+                e.kurz?.takeIf { e.hatInhalt && it != e.titel }?.let { k ->
+                    addView(text(k, 16f).apply {
+                        maxLines = 3
+                        ellipsize = TextUtils.TruncateAt.END
+                        setPadding(0, dp(5), 0, 0)
+                    })
+                }
                 val unter = listOfNotNull(e.stand, if (!e.hatInhalt && e.stand == null) e.dauerText().ifBlank { null } else null)
                 if (unter.isNotEmpty()) addView(text(unter.joinToString(" · "), 15f).apply { setPadding(0, dp(4), 0, 0) })
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
