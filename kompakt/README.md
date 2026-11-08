@@ -89,6 +89,8 @@ WLAN ist bewusst aus: das Öffnen eines Ports im Netz hat der Auto-Mode blockier
 - Laptop-Seite: `Braininger\daten\protokoll.txt` (Zeilen mit „Kompakt“)
 - Akku-Einschränkung: `adb shell cmd appops get de.braininger.lite RUN_ANY_IN_BACKGROUND` (soll `allow` sein)
 - Taste ohne Finger: JSON für `hid` mit Verbraucher-Deskriptor nach `/data/local/tmp`, dann `adb shell hid datei.json`
+- Aufnahme am Kompakt löschen (nur nach Jans OK): `adb shell am broadcast -a de.braininger.lite.LOESCHEN -n de.braininger.lite/.EinrichtungEmpfaenger --es id <id>`.
+  Am Laptop dazu die ID in `daten/endgueltig_geloescht.json`, `daten/aufnahmen/<id>` und den Eingang-Ordner entfernen.
 
 ## Offen
 - Echte Lauter-Taste von Jan probieren lassen, Offline+-Warnung mit echtem Schalter, Akku über einen Tag mit Dienst.
