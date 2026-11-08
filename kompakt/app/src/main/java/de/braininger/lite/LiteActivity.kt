@@ -751,7 +751,12 @@ class LiteActivity : Activity() {
         val sachen = Daten.einkauf(this, alle)
         val zeilen = mutableListOf<View>()
         var letzteGruppe: String? = null
-        fun gruppeVon(s: Sache) = if (s.abgehakt) "Im Korb" else Daten.ABTEILUNGEN.getOrElse(s.abteilung) { "Sonstiges" }
+        // Supermarkt nach Gängen, andere Läden (dm, Bäcker, Baumarkt) unter ihrem Namen
+        fun gruppeVon(s: Sache) = when {
+            s.abgehakt -> "Im Korb"
+            s.laden != "Supermarkt" -> s.laden
+            else -> Daten.ABTEILUNGEN.getOrElse(s.abteilung) { "Sonstiges" }
+        }
         val mitUeberschriften = sachen.map { gruppeVon(it) }.distinct().size > 1 // eine einzige Gruppe braucht keine
         for (s in sachen) {
             val gruppe = gruppeVon(s)

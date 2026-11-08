@@ -63,7 +63,10 @@ class Aufgabe(
     val schluessel: String, val text: String, val frist: Date?, val erledigt: Boolean,
     val bezug: String, val quelle: Eintrag,
 )
-class Sache(val schluessel: String, val sache: String, val details: String, val abteilung: Int, val abgehakt: Boolean)
+class Sache(
+    val schluessel: String, val sache: String, val details: String, val abteilung: Int, val abgehakt: Boolean,
+    val laden: String = "Supermarkt",
+)
 
 /**
  * Sammelt Aufgaben und Einkäufe aus allen Ergebnissen und merkt sich, was Jan am Kompakt abgehakt hat.
@@ -77,6 +80,11 @@ object Daten {
     val ABTEILUNGEN = listOf(
         "Obst & Gemüse", "Brot", "Kühlregal", "Fleisch & Fisch", "Vorrat", "Süßes & Knabbern",
         "Getränke", "Tiefkühl", "Drogerie & Haushalt", "Sonstiges",
+    )
+    // so heißen die Abteilungen in ergebnis.json (laptop/braininger/auswertung.py ABTEILUNGEN), gleiche Reihenfolge
+    private val KENNUNGEN = listOf(
+        "obst_gemuese", "brot", "kuehlregal", "fleisch_fisch", "vorrat", "suesses", "getraenke", "tiefkuehl",
+        "drogerie_haushalt", "sonstiges",
     )
 
     fun eintraege(c: Context): List<Eintrag> = Lager.aufnahmen(c).mapNotNull { o ->
@@ -146,11 +154,14 @@ object Daten {
                 if (zustand == "weg") continue
                 val details = listOf(x.optString("menge"), x.optString("details"), x.optString("wer_holt").let { if (it.isNotBlank()) "$it holt" else "" })
                     .filter { it.isNotBlank() && it != "null" }.joinToString(" · ")
-                val abt = ABTEILUNGEN.indexOf(x.optString("abteilung")).let { if (it < 0) ABTEILUNGEN.size else it }
-                liste += Sache(s, name, details, abt, zustand == "ja")
+                val roh = x.optString("abteilung")
+                val abt = KENNUNGEN.indexOf(roh).takeIf { it >= 0 } ?: ABTEILUNGEN.indexOf(roh).takeIf { it >= 0 } ?: (ABTEILUNGEN.size - 1)
+                val laden = x.optString("laden").takeIf { it.isNotBlank() && it != "null" } ?: "Supermarkt"
+                liste += Sache(s, name, details, abt, zustand == "ja", laden)
             }
         }
-        return liste.sortedWith(compareBy<Sache>({ it.abgehakt }, { it.abteilung }))
+        // erst der Supermarkt (nach Gang), dann die anderen Läden nach Namen, Abgehaktes ans Ende
+        return liste.sortedWith(compareBy<Sache>({ it.abgehakt }, { it.laden != "Supermarkt" }, { it.laden.lowercase() }, { it.abteilung }))
     }
 
     fun sacheUmschalten(c: Context, s: Sache) {
