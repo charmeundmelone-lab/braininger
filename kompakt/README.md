@@ -36,7 +36,7 @@ keine Google-Dienste). Zweig `kompakt-lite`, gebaut von `.github/workflows/kompa
   solche Ansagen schon keine Notiz an.
 - Markierung: Lauter kurz drücken, während eine Aufnahme läuft = „das war wichtig“ (ein kurzes Tippen als Vibration).
   Landet als Sekunde in `info.json → markierungen`; das Laptop-Programm gibt sie Claude schon mit.
-- Einkauf nach Abteilungen im Laden, die ganze Zeile hakt ab, „Abgehakte entfernen“.
+- Einkauf nach Abteilungen im Laden, die ganze Zeile hakt ab, „Leeren“ rechts neben „Im Korb“; der Korb leert sich sonst jeden Morgen um 4 Uhr von selbst.
 - Aufnehmen: großer Knopf oder **Lauter-Taste 1 Sekunde halten** (auch bei dunklem Bildschirm, auch in anderen Apps,
   die die Taste nicht selbst nutzen). Start = einmal lang vibrieren, Stopp = zweimal kurz, stummes Mikrofon = dreimal lang.
 - Warnt, sobald das Mikrofon 2 s lang nur Stille liefert, auch mitten in der Aufnahme: Offline+ (trennt die Mikrofone

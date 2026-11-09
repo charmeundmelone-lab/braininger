@@ -795,7 +795,7 @@ class LiteActivity : Activity() {
      * es mehrere gibt), darin bei Supermärkten (auch Aldi, Rewe …) die Gänge in der festen Reihenfolge vom Eingang
      * zur Kasse (Grill Einkauf 2.11.), bei anderen Läden (dm, Bäcker) einfach die Sachen. Abgehaktes am Ende.
      */
-    private fun einkaufGliedern(sachen: List<Sache>, zeile: (Sache) -> View): List<View> {
+    private fun einkaufGliedern(sachen: List<Sache>, leeren: (() -> Unit)? = null, zeile: (Sache) -> View): List<View> {
         val zeilen = mutableListOf<View>()
         val offen = sachen.filter { !it.abgehakt }
         val laeden = offen.map { ladenName(it) }.distinct()
@@ -821,9 +821,27 @@ class LiteActivity : Activity() {
             zeilen += z
         }
         val korb = sachen.filter { it.abgehakt }
-        if (korb.isNotEmpty() && offen.isNotEmpty()) zeilen += ueberschrift("Im Korb")
+        if (korb.isNotEmpty() && (offen.isNotEmpty() || leeren != null)) zeilen += korbKopf(leeren)
         korb.forEach { s -> zeilen += zeile(s).also { if (offen.isNotEmpty()) zeilenKontext[it] = "Im Korb" } }
         return zeilen
+    }
+
+    /**
+     * „IM KORB“ und rechts daneben, wo es hingehört, ein kleines umrandetes „Leeren“. So kann der Knopf nie allein auf
+     * einer sonst leeren Seite landen (Jan, 9.11.2026). Meist braucht man ihn nicht: der Korb leert sich am Morgen.
+     */
+    private fun korbKopf(leeren: (() -> Unit)?): View = LinearLayout(this).apply {
+        gravity = Gravity.CENTER_VERTICAL
+        tag = UEBERSCHRIFT
+        setPadding(0, dp(10), 0, dp(1))
+        addView(text("IM KORB", 14f, dick = true).apply { letterSpacing = 0.08f },
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        if (leeren != null) addView(text("Leeren", 15f, dick = true).apply {
+            setPadding(dp(14), dp(4), dp(14), dp(5))
+            background = GradientDrawable().apply { cornerRadius = dpf(12f); setColor(Color.WHITE); setStroke(dp(2), Color.BLACK) }
+            contentDescription = "Abgehakte von der Liste nehmen"
+            setOnClickListener { leeren() }
+        })
     }
 
     /** Laden als Überschrift: Name fett, darunter der kurze Strich wie im Tagebuch. */
@@ -838,16 +856,13 @@ class LiteActivity : Activity() {
 
     private fun einkaufSeite(alle: List<Eintrag>) {
         val sachen = Daten.einkauf(this, alle)
-        val zeilen = einkaufGliedern(sachen) { s ->
+        val zeilen = einkaufGliedern(sachen, leeren = {
+            Daten.abgehakteWeg(this, sachen)
+            seite = 0
+            zeichnen()
+        }) { s ->
             hakenZeile(s.sache, s.details.ifBlank { null }, s.abgehakt) {
                 Daten.sacheUmschalten(this, s)
-                zeichnen()
-            }
-        }.toMutableList()
-        if (sachen.any { it.abgehakt }) {
-            zeilen += leiseZeile("Abgehakte entfernen", R.drawable.pfeil_rechts, einzug = 0) {
-                Daten.abgehakteWeg(this@LiteActivity, sachen)
-                seite = 0
                 zeichnen()
             }
         }

@@ -221,20 +221,54 @@ object Daten {
                 liste += Sache(s, name, details, abt, zustand == "ja", laden, alt)
             }
         }
+        // Der Korb leert sich am Morgen von selbst: was vor 4 Uhr heute abgehakt wurde, kommt weg (Jan, 9.11.2026).
+        // Häkchen ohne Uhrzeit (von vor dieser Version) bekommen jetzt eine und gehen am nächsten Morgen.
+        val grenze = morgenGrenze()
+        val jetzt = System.currentTimeMillis()
+        val zeiten = p.edit()
+        val abgelaufen = liste.filter { s ->
+            if (!s.abgehakt) return@filter false
+            val t = p.getLong(zeitSchluessel(s.schluessel), 0L)
+            if (t == 0L) { zeiten.putLong(zeitSchluessel(s.schluessel), jetzt); false } else t < grenze
+        }
+        zeiten.apply()
+        if (abgelaufen.isNotEmpty()) {
+            abgehakteWeg(c, abgelaufen)
+            liste.removeAll(abgelaufen)
+        }
         // erst der Supermarkt (nach Gang), dann die anderen Läden nach Namen, Abgehaktes ans Ende
         return liste.sortedWith(compareBy<Sache>({ it.abgehakt }, { ladenRang(it.laden) }, { it.laden.lowercase() }, { it.abteilung }))
     }
 
+    private fun zeitSchluessel(schluessel: String) = "$schluessel@zeit"
+
+    /** Heute 4 Uhr früh, oder gestern 4 Uhr, wenn es noch nicht so spät ist. */
+    private fun morgenGrenze(): Long = java.util.Calendar.getInstance().apply {
+        val jetzt = timeInMillis
+        set(java.util.Calendar.HOUR_OF_DAY, 4)
+        set(java.util.Calendar.MINUTE, 0)
+        set(java.util.Calendar.SECOND, 0)
+        set(java.util.Calendar.MILLISECOND, 0)
+        if (timeInMillis > jetzt) add(java.util.Calendar.DAY_OF_MONTH, -1)
+    }.timeInMillis
+
     fun sacheUmschalten(c: Context, s: Sache) {
         c.getSharedPreferences(PREFS, 0).edit().apply {
             s.alterSchluessel?.let { remove(it) }
-            if (s.abgehakt) remove(s.schluessel) else putString(s.schluessel, "ja")
+            if (s.abgehakt) {
+                remove(s.schluessel)
+                remove(zeitSchluessel(s.schluessel))
+            } else {
+                putString(s.schluessel, "ja")
+                putLong(zeitSchluessel(s.schluessel), System.currentTimeMillis())
+            }
         }.apply()
     }
 
     /** „Rückgängig“ im Laden: die Sache ist wieder offen. */
     fun sacheOeffnen(c: Context, s: Sache) = c.getSharedPreferences(PREFS, 0).edit().apply {
         remove(s.schluessel)
+        remove(zeitSchluessel(s.schluessel))
         s.alterSchluessel?.let { remove(it) }
     }.apply()
 
@@ -243,6 +277,7 @@ object Daten {
         c.getSharedPreferences(PREFS, 0).edit().apply {
             weg.forEach { s ->
                 s.alterSchluessel?.let { remove(it) }
+                remove(zeitSchluessel(s.schluessel))
                 if (s.schluessel.startsWith("m:")) remove(s.schluessel) else putString(s.schluessel, "weg")
             }
         }.apply()
