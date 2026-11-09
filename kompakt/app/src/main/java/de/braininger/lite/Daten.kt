@@ -93,6 +93,8 @@ class Aufgabe(
 class Sache(
     val schluessel: String, val sache: String, val details: String, val abteilung: Int, val abgehakt: Boolean,
     val laden: String = "Supermarkt",
+    /** frühere Form des Häkchen-Schlüssels (Stelle in der Liste), wird beim nächsten Antippen aufgeräumt */
+    val alterSchluessel: String? = null,
 )
 
 /**
@@ -183,26 +185,40 @@ object Daten {
         }.apply()
     }
 
+    /**
+     * Häkchen hängen an der Sache selbst („e:<Aufnahme>:milch“), nicht an ihrer Stelle in der Liste: wertet der Laptop
+     * eine Aufnahme neu aus, verrutscht sonst ein Häkchen zur Nachbarsache. Ältere Häkchen („e:<Aufnahme>:3“) gelten
+     * weiter, bis die Sache das nächste Mal angetippt wird.
+     */
     fun einkauf(c: Context, alle: List<Eintrag>): List<Sache> {
         val p = c.getSharedPreferences(PREFS, 0)
         val liste = mutableListOf<Sache>()
         val schonDa = mutableSetOf<String>()
+        // von Hand Hinzugefügtes zuerst: es ist meist das Neueste
+        for (x in eigene(c)) {
+            val name = x.optString("sache").trim()
+            if (name.isBlank() || !schonDa.add(name.lowercase(Locale.GERMANY))) continue
+            val k = x.optString("k")
+            liste += Sache(k, name, "", x.optInt("abteilung", ABTEILUNGEN.size - 1), p.getString(k, null) == "ja",
+                x.optString("laden").ifBlank { "Supermarkt" })
+        }
         for (e in alle) {
             val a = e.erg?.optJSONArray("einkauf") ?: continue
             for (i in 0 until a.length()) {
                 val x = a.optJSONObject(i) ?: continue
-                val s = "e:${e.id}:$i"
                 val name = x.optString("sache").trim()
                 // die neueste Nennung zählt (Liste ist neu → alt); ältere gleiche Sachen fallen weg
                 if (name.isBlank() || !schonDa.add(name.lowercase(Locale.GERMANY))) continue
-                val zustand = p.getString(s, null)
+                val s = "e:${e.id}:${name.lowercase(Locale.GERMANY)}"
+                val alt = "e:${e.id}:$i"
+                val zustand = p.getString(s, null) ?: p.getString(alt, null)
                 if (zustand == "weg") continue
                 val details = listOf(x.optString("menge"), x.optString("details"), x.optString("wer_holt").let { if (it.isNotBlank()) "$it holt" else "" })
                     .filter { it.isNotBlank() && it != "null" }.joinToString(" · ")
                 val roh = x.optString("abteilung")
                 val abt = KENNUNGEN.indexOf(roh).takeIf { it >= 0 } ?: ABTEILUNGEN.indexOf(roh).takeIf { it >= 0 } ?: (ABTEILUNGEN.size - 1)
                 val laden = x.optString("laden").takeIf { it.isNotBlank() && it != "null" } ?: "Supermarkt"
-                liste += Sache(s, name, details, abt, zustand == "ja", laden)
+                liste += Sache(s, name, details, abt, zustand == "ja", laden, alt)
             }
         }
         // erst der Supermarkt (nach Gang), dann die anderen Läden nach Namen, Abgehaktes ans Ende
@@ -211,16 +227,88 @@ object Daten {
 
     fun sacheUmschalten(c: Context, s: Sache) {
         c.getSharedPreferences(PREFS, 0).edit().apply {
+            s.alterSchluessel?.let { remove(it) }
             if (s.abgehakt) remove(s.schluessel) else putString(s.schluessel, "ja")
         }.apply()
     }
 
     /** „Rückgängig“ im Laden: die Sache ist wieder offen. */
-    fun sacheOeffnen(c: Context, s: Sache) = c.getSharedPreferences(PREFS, 0).edit().remove(s.schluessel).apply()
+    fun sacheOeffnen(c: Context, s: Sache) = c.getSharedPreferences(PREFS, 0).edit().apply {
+        remove(s.schluessel)
+        s.alterSchluessel?.let { remove(it) }
+    }.apply()
 
     fun abgehakteWeg(c: Context, alle: List<Sache>) {
+        val weg = alle.filter { it.abgehakt }
         c.getSharedPreferences(PREFS, 0).edit().apply {
-            alle.filter { it.abgehakt }.forEach { putString(it.schluessel, "weg") }
+            weg.forEach { s ->
+                s.alterSchluessel?.let { remove(it) }
+                if (s.schluessel.startsWith("m:")) remove(s.schluessel) else putString(s.schluessel, "weg")
+            }
         }.apply()
+        // von Hand Hinzugefügtes ganz entfernen
+        val schluessel = weg.map { it.schluessel }.filter { it.startsWith("m:") }.toSet()
+        if (schluessel.isNotEmpty()) eigeneSpeichern(c, eigene(c).filter { it.optString("k") !in schluessel })
     }
+
+    // ----- von Hand hinzugefügte Einkäufe (Plus am Kompakt), nur hier gespeichert
+
+    private const val EIGENE = "lite_eigene"
+
+    private fun eigene(c: Context): List<JSONObject> = try {
+        val a = org.json.JSONArray(c.getSharedPreferences(EIGENE, 0).getString("liste", "[]"))
+        (0 until a.length()).mapNotNull { a.optJSONObject(it) }
+    } catch (_: Exception) { emptyList() }
+
+    private fun eigeneSpeichern(c: Context, liste: List<JSONObject>) =
+        c.getSharedPreferences(EIGENE, 0).edit().putString("liste", org.json.JSONArray(liste).toString()).apply()
+
+    fun hinzufuegen(c: Context, sache: String, abteilung: Int) {
+        val neu = JSONObject().put("k", "m:${System.currentTimeMillis()}").put("sache", sache.trim())
+            .put("abteilung", abteilung).put("laden", "Supermarkt")
+        eigeneSpeichern(c, listOf(neu) + eigene(c))
+    }
+
+    /**
+     * Gang für eine eingetippte Sache raten. Das längste passende Stichwort gewinnt („Erdbeermarmelade“ → Vorrat,
+     * „Fischstäbchen“ → Tiefkühl). Unbekanntes: Sonstiges. Jan kann den Gang beim Hinzufügen mit einem Tipp ändern.
+     */
+    fun abteilungRaten(sache: String): Int {
+        val s = sache.lowercase(Locale.GERMANY)
+        var beste = ABTEILUNGEN.size - 1
+        var laenge = 0
+        STICHWORTE.forEachIndexed { abt, woerter ->
+            woerter.forEach { w -> if (w.length > laenge && s.contains(w)) { beste = abt; laenge = w.length } }
+        }
+        return beste
+    }
+
+    // gleiche Reihenfolge wie ABTEILUNGEN
+    private val STICHWORTE = listOf(
+        listOf("apfel", "äpfel", "banane", "birne", "kirsch", "erdbeer", "traube", "zitrone", "orange", "mandarine",
+            "kiwi", "obst", "gemüse", "salat", "gurke", "tomate", "paprika", "zwiebel", "knoblauch", "kartoffel", "möhre",
+            "karotte", "kohlrabi", "brokkoli", "blumenkohl", "zucchini", "aubergine", "pilz", "champignon", "lauch",
+            "basilikum", "petersilie", "schnittlauch", "kräuter", "avocado", "ingwer", "radieschen", "sellerie", "kohl",
+            "mango", "ananas", "beeren", "melone", "spinat", "limette", "feige", "pflaume"),
+        listOf("brot", "brötchen", "semmel", "toast", "baguette", "croissant", "laugen", "brezel", "weck", "zwieback",
+            "kuchen", "stuten"),
+        listOf("milch", "joghurt", "quark", "skyr", "käse", "butter", "sahne", "schmand", "frischkäse", "mozzarella",
+            "parmesan", "feta", "eier", "wurst", "salami", "schinken", "lyoner", "aufschnitt", "margarine", "pudding",
+            "tofu", "kefir", "buttermilch", "hefeteig", "blätterteig"),
+        listOf("fleisch", "hack", "hähnchen", "huhn", "pute", "schnitzel", "steak", "rind", "schwein", "lachs", "fisch",
+            "garnele", "bratwurst", "würstchen", "gulasch", "forelle", "thunfisch"),
+        listOf("mehl", "zucker", "salz", "pfeffer", "nudel", "pasta", "spaghetti", "reis", "linsen", "bohnen", "konserve",
+            "dose", "tomatenmark", "öl", "essig", "kaffee", "tee", "kakao", "müsli", "haferflocken", "cornflakes", "honig",
+            "marmelade", "nutella", "gewürz", "zimt", "kapern", "brühe", "soße", "sauce", "senf", "ketchup", "mayo",
+            "backpulver", "hefe", "kuvertüre", "nüsse", "mandeln", "rosinen", "oliven", "passierte"),
+        listOf("schokolade", "chips", "kekse", "keks", "gummibär", "bonbon", "süßigkeit", "knabber", "salzstangen",
+            "popcorn", "riegel", "lakritz"),
+        listOf("wasser", "saft", "bier", "wein", "cola", "limo", "sprudel", "schorle", "sekt", "eistee", "mate"),
+        listOf("tiefkühl", "pizza", "fischstäbchen", "eis", "pommes", "rahmspinat", "tk-", "gefrier"),
+        listOf("klopapier", "toilettenpapier", "küchenrolle", "taschentücher", "spülmittel", "spülmaschine", "tabs",
+            "waschmittel", "weichspüler", "shampoo", "duschgel", "zahnpasta", "zahnbürste", "seife", "deo", "müllbeutel",
+            "schwamm", "putzmittel", "windel", "creme", "rasier", "batterie", "glühbirne", "alufolie", "frischhaltefolie",
+            "backpapier"),
+        emptyList(),
+    )
 }

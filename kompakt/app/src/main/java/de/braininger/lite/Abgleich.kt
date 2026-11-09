@@ -24,6 +24,8 @@ object Abgleich {
             Lager.kontaktMerken(c)
             var gesendet = 0
             var geholt = 0
+            val vorDreiTagen = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT)
+                .format(java.util.Date(System.currentTimeMillis() - 3L * 24 * 3600 * 1000))
             for (o in Lager.aufnahmen(c)) {
                 val info = Lager.json(File(o, "info.json")) ?: continue
                 val status = info.optString("status")
@@ -35,9 +37,14 @@ object Abgleich {
                     } else continue
                 }
                 val bisher = Lager.json(File(o, "ergebnis.json"))
-                if (bisher?.optString("status") == "fertig") continue
+                // Fertiges der letzten drei Tage trotzdem nachsehen: der Laptop kann neu ausgewertet haben
+                // (z. B. 9.11.2026 nach der Whisper-Korrektur). Über das Kabel kostet das nur ein paar Kilobyte.
+                if (bisher?.optString("status") == "fertig" && o.name.take(10) < vorDreiTagen) continue
                 val text = holen("$basis/lite/ergebnis/${o.name}", schluessel) ?: continue
-                if (text.isNotBlank() && text != bisher?.toString()) {
+                val neu = try { org.json.JSONObject(text) } catch (_: Exception) { null } ?: continue
+                // ein fertiges Ergebnis nur durch ein anderes fertiges ersetzen, nie durch einen Zwischenstand
+                if (bisher?.optString("status") == "fertig" && neu.optString("status") != "fertig") continue
+                if (neu.toString() != bisher?.toString()) {
                     Lager.schreiben(File(o, "ergebnis.json"), text)
                     geholt++
                 }

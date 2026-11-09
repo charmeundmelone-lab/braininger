@@ -2,8 +2,8 @@
 
 Datei „Braininger\\Wörterbuch.txt“ (privat, nicht im GitHub-Projekt), von Hand im Editor pflegbar:
 ein Begriff je Zeile, Zeilen mit # sind Überschriften oder Kommentare.
-Wirkt an zwei Stellen: Whisper bekommt die Begriffe als „hotwords“ (bevorzugt sie beim Hören),
-Claude bekommt die Liste und korrigiert Hörfehler zu diesen Schreibweisen.
+Wirkt bei Claude: es bekommt die Liste und korrigiert Hörfehler zu diesen Schreibweisen. (Bis 9.11.2026 bekam auch
+Whisper sie als „hotwords“; das hat Sätze verschluckt, siehe texterkennung.erkennen.)
 Namen, die der Nutzer in der App einem Sprecher gibt, kommen automatisch unter „# Personen (gelernt)“ dazu.
 """
 import logging

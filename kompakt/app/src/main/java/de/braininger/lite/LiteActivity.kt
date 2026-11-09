@@ -50,7 +50,7 @@ class LiteActivity : Activity() {
         const val TAGESKOPF = "tageskopf" // beginnt immer eine neue Seite
     }
 
-    private enum class Ansicht { START, AUFGABEN, EINKAUF, LADEN, AUFNAHMEN, AUFNAHME, UEBERSICHT }
+    private enum class Ansicht { START, AUFGABEN, EINKAUF, LADEN, HINZU, AUFNAHMEN, AUFNAHME, UEBERSICHT }
 
     private var ansicht = Ansicht.START
     private var seite = 0
@@ -96,6 +96,10 @@ class LiteActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.statusBarColor = Color.WHITE
         wurzel = FrameLayout(this).apply { setBackgroundColor(Color.WHITE) }
+        // ändert sich die Höhe (Tastatur geht zu), die Seiten neu verteilen; die Hinzufügen-Seite bleibt, wie sie ist
+        wurzel.addOnLayoutChangeListener { _, _, oben, _, unten, _, altOben, _, altUnten ->
+            if (unten - oben != altUnten - altOben && altUnten - altOben > 0 && ansicht != Ansicht.HINZU) wurzel.post { zeichnen() }
+        }
         setContentView(wurzel)
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.POST_NOTIFICATIONS), 1)
@@ -206,6 +210,10 @@ class LiteActivity : Activity() {
         if (ansicht == Ansicht.AUFNAHME || ansicht == Ansicht.UEBERSICHT) {
             ansicht = zurueckZu
             seite = zurueckSeite
+        } else if (ansicht == Ansicht.HINZU) {
+            tastaturWeg()
+            ansicht = Ansicht.EINKAUF
+            seite = 0
         } else if (ansicht == Ansicht.LADEN) {
             ansicht = Ansicht.EINKAUF
             seite = 0
@@ -263,7 +271,10 @@ class LiteActivity : Activity() {
     }
 
     /** Kopfzeile: links Zurück-Pfeil (außer Start), Titel, rechts ein kleiner Zusatz. Darunter die dicke Linie. */
-    private fun kopf(titel: String, rechts: String? = null, zurueckPfeil: Boolean = false): View {
+    private fun kopf(
+        titel: String, rechts: String? = null, zurueckPfeil: Boolean = false,
+        aktionSymbol: Int? = null, aktionText: String = "", aktion: (() -> Unit)? = null,
+    ): View {
         val zeile = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -282,6 +293,12 @@ class LiteActivity : Activity() {
             ellipsize = TextUtils.TruncateAt.END
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         if (rechts != null) zeile.addView(text(rechts, 16f))
+        if (aktionSymbol != null && aktion != null) zeile.addView(symbol(aktionSymbol, 30).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(52), dp(60))
+            scaleType = ImageView.ScaleType.CENTER
+            contentDescription = aktionText
+            setOnClickListener { aktion() }
+        })
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(zeile, breit(dp(60)))
@@ -424,6 +441,7 @@ class LiteActivity : Activity() {
             Ansicht.AUFGABEN -> aufgabenSeite(alle)
             Ansicht.EINKAUF -> einkaufSeite(alle)
             Ansicht.LADEN -> ladenSeite(alle)
+            Ansicht.HINZU -> hinzuSeite()
             Ansicht.AUFNAHMEN -> tagebuch(alle)
             Ansicht.UEBERSICHT -> uebersichtSeite(gewaehlt)
             Ansicht.AUFNAHME -> {
@@ -834,7 +852,8 @@ class LiteActivity : Activity() {
             }
         }
         val offen = sachen.filter { !it.abgehakt }
-        rahmen(kopf("Einkauf", zurueckPfeil = true), unten = einkaufKnoepfe(offen), inhalt = liste(zeilen, "Die Liste ist leer."))
+        rahmen(kopf("Einkauf", zurueckPfeil = true, aktionSymbol = R.drawable.plus, aktionText = "Einkauf hinzufügen") { oeffnen(Ansicht.HINZU) },
+            unten = einkaufKnoepfe(offen), inhalt = liste(zeilen, "Die Liste ist leer."))
     }
 
     /** Unten fest: „Im Laden“ (schwarz) und „Teilen“ (umrandet), nur wenn etwas offen ist. */
@@ -895,6 +914,102 @@ class LiteActivity : Activity() {
             }
         }
         rahmen(kopf("Im Laden", zurueckPfeil = true), unten = rueck, inhalt = liste(zeilen, "Alles im Korb."))
+    }
+
+    // ----- Plus: Einkauf von Hand dazuschreiben
+
+    private var zuletztHinzu: String? = null // „Auf der Liste: Milch · Kühlregal“ als ruhige Bestätigung
+
+    private fun tastaturWeg() {
+        currentFocus?.let { getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+            ?.hideSoftInputFromWindow(it.windowToken, 0) }
+    }
+
+    /**
+     * Eine schlichte Seite: oben das Feld („Was fehlt?“), darunter die Gänge zum Antippen. Den passenden Gang rät
+     * die App schon beim Tippen (schwarz hinterlegt); „Fertig“ auf der Tastatur nimmt ihn, ein Tipp auf einen anderen
+     * Gang nimmt jenen. Danach ist das Feld leer für die nächste Sache.
+     */
+    private fun hinzuSeite() {
+        val spalte = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        spalte.addView(kopf("Hinzufügen", zurueckPfeil = true))
+        val inhalt = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(8))
+        }
+        val feld = android.widget.EditText(this).apply {
+            textSize = 24f
+            typeface = fett
+            setTextColor(Color.BLACK)
+            setHintTextColor(Color.BLACK)
+            hint = "Was fehlt?"
+            isSingleLine = true
+            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            background = null
+            setPadding(0, dp(6), 0, dp(6))
+        }
+        inhalt.addView(feld, breit())
+        inhalt.addView(View(this).apply { setBackgroundColor(Color.BLACK) }, breit(dp(3)))
+
+        val bestaetigung = text(zuletztHinzu?.let { "Auf der Liste: $it" } ?: " ", 15f).apply { setPadding(0, dp(8), 0, 0) }
+        inhalt.addView(bestaetigung, breit())
+        inhalt.addView(ueberschrift("Wohin"), breit())
+
+        val kurz = listOf("Obst & Gemüse", "Brot", "Kühlregal", "Fleisch & Fisch", "Vorrat", "Süßes",
+            "Getränke", "Tiefkühl", "Drogerie", "Sonstiges")
+        val knoepfe = mutableListOf<TextView>()
+        var geraten = Daten.ABTEILUNGEN.size - 1
+        fun markieren() {
+            knoepfe.forEachIndexed { i, k ->
+                val an = i == geraten && feld.text.isNotBlank()
+                k.setTextColor(if (an) Color.WHITE else Color.BLACK)
+                (k.background as GradientDrawable).setColor(if (an) Color.BLACK else Color.WHITE)
+            }
+        }
+        fun nehmen(abt: Int) {
+            val name = feld.text.toString().trim()
+            if (name.isEmpty()) return
+            Daten.hinzufuegen(this, name, abt)
+            zuletztHinzu = "$name · ${Daten.ABTEILUNGEN[abt]}"
+            bestaetigung.text = "Auf der Liste: $zuletztHinzu"
+            feld.setText("")
+            markieren()
+        }
+        val raster = android.widget.GridLayout(this).apply { columnCount = 2 }
+        kurz.forEachIndexed { i, name ->
+            val k = text(name, 16f, dick = true).apply {
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply { cornerRadius = dpf(10f); setColor(Color.WHITE); setStroke(dp(2), Color.BLACK) }
+                setOnClickListener { nehmen(i) }
+            }
+            knoepfe += k
+            raster.addView(k, android.widget.GridLayout.LayoutParams(
+                android.widget.GridLayout.spec(i / 2, 1f), android.widget.GridLayout.spec(i % 2, 1f)
+            ).apply { width = 0; height = dp(44); setMargins(dp(3), dp(4), dp(3), dp(4)) })
+        }
+        inhalt.addView(raster, breit())
+
+        feld.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                geraten = Daten.abteilungRaten(s?.toString().orEmpty())
+                markieren()
+            }
+        })
+        feld.setOnEditorActionListener { _, _, _ -> nehmen(geraten); true }
+        markieren()
+
+        // falls die Tastatur viel Platz nimmt: lieber verschieben als abschneiden (nur auf dieser Seite)
+        spalte.addView(android.widget.ScrollView(this).apply { addView(inhalt) },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        wurzel.addView(spalte)
+        feld.requestFocus()
+        feld.post {
+            getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+                ?.showSoftInput(feld, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+        }
     }
 
     /**

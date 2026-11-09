@@ -135,7 +135,7 @@ def erkennen(audio: np.ndarray, gespraech: bool, fortschritt: Callable[[str, flo
     """fortschritt(schritt, anteil 0..1) wird zwischendurch aufgerufen, für die Statusanzeige in der App."""
     from faster_whisper import WhisperModel
 
-    from . import sprecher, woerterbuch
+    from . import sprecher
 
     dauer = len(audio) / E.ABTASTRATE
     sprecher_stuecke: list = []
@@ -160,7 +160,9 @@ def erkennen(audio: np.ndarray, gespraech: bool, fortschritt: Callable[[str, flo
     sicherheit: dict[str, float] = {}
     if bloecke:
         modell = WhisperModel(str(E.WHISPER_MODELL), device="cpu", compute_type="int8", cpu_threads=E.THREADS)
-        hotwords = woerterbuch.hotwords()
+        # Keine „hotwords“ mehr: Mit der Namensliste aus dem Wörterbuch hat Whisper ganze Sätze verschluckt (Aufnahme
+        # 2026-11-09_081003: 81 statt 117 Wörter, Milch, Eier und Zwiebeln fehlten auf der Einkaufsliste; gleiches Audio
+        # ohne Liste vollständig). Die Namen korrigiert Claude danach anhand des Wörterbuchs (auswertung.prompt_bauen).
         try:
             for i, (b_start, b_ende) in enumerate(bloecke):
                 if i > 0:
@@ -172,7 +174,7 @@ def erkennen(audio: np.ndarray, gespraech: bool, fortschritt: Callable[[str, flo
                 versatz = von / E.ABTASTRATE
                 # Bei Gesprächen Zeiten je Wort, damit ein Satz am Sprecherwechsel geteilt werden kann
                 segmente, info = modell.transcribe(audio[von:bis], beam_size=E.WHISPER_BEAM, vad_filter=True,
-                                                   word_timestamps=gespraech, hotwords=hotwords)
+                                                   word_timestamps=gespraech)
                 laenge = (bis - von) / E.ABTASTRATE
                 for s in segmente:  # Generator: die eigentliche Arbeit passiert hier
                     text = s.text.strip()
