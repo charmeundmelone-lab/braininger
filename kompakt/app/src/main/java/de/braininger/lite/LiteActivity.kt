@@ -381,7 +381,16 @@ class LiteActivity : Activity() {
             if (neueSeite || (belegt + h > hoehe && seiten.last().isNotEmpty())) {
                 val alt = seiten.last()
                 val neu = mutableListOf<View>()
-                if (!neueSeite && alt.size > 1 && alt.last().tag == UEBERSCHRIFT) neu += alt.removeAt(alt.size - 1)
+                // Überschriften (auch Laden + Gang zusammen) nie allein unten stehen lassen
+                while (!neueSeite && alt.size > 1 && alt.last().tag == UEBERSCHRIFT) neu.add(0, alt.removeAt(alt.size - 1))
+                // läuft eine Gruppe auf der neuen Seite weiter, steht oben klein, wo man ist („REWE · KÜHLREGAL“)
+                if (neu.isEmpty() && z.tag != UEBERSCHRIFT && z.tag != TAGESKOPF) zeilenKontext[z]?.let { k ->
+                    neu += ueberschrift(k).apply {
+                        setPadding(0, dp(2), 0, dp(1))
+                        measure(View.MeasureSpec.makeMeasureSpec(breite, View.MeasureSpec.EXACTLY),
+                            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+                    }
+                }
                 seiten += neu
                 belegt = neu.sumOf { it.measuredHeight }
             }
@@ -672,6 +681,7 @@ class LiteActivity : Activity() {
             }
             val offen = a.schluessel == offeneAufgabe
             val z = aufgabeZeile(a, rechtsText(a), offen, if (a.schluessel in zweizeilig) 2 else 1)
+            zeilenKontext[z] = gruppe
             if (offen) fokus = z
             zeilen += z
         }
@@ -753,31 +763,69 @@ class LiteActivity : Activity() {
         }
     }
 
-    // ----- Einkauf: nach Abteilungen im Laden, Antippen hakt ab
+    // ----- Einkauf: nach Läden und Gängen, Antippen hakt ab
 
-    /** Supermarkt nach Gängen, andere Läden (dm, Bäcker, Baumarkt) unter ihrem Namen. */
-    private fun gruppeVon(s: Sache) = when {
-        s.abgehakt -> "Im Korb"
-        s.laden != "Supermarkt" -> s.laden
-        else -> Daten.ABTEILUNGEN.getOrElse(s.abteilung) { "Sonstiges" }
+    /** Wo eine Zeile hingehört („Rewe · Kühlregal“): steht oben auf einer neuen Seite, wenn die Gruppe weiterläuft. */
+    private val zeilenKontext = java.util.WeakHashMap<View, String>()
+
+    private fun ladenName(s: Sache) = s.laden.ifBlank { "Supermarkt" }
+    private fun abteilungName(s: Sache) = Daten.ABTEILUNGEN.getOrElse(s.abteilung) { "Sonstiges" }
+    private fun hatGaenge(laden: String) = laden == "Supermarkt" || Daten.istSupermarkt(laden)
+
+    /**
+     * Gliedert die Liste wie einen Weg durch die Läden: der Laden als Überschrift (nur wenn einer genannt ist oder
+     * es mehrere gibt), darin bei Supermärkten (auch Aldi, Rewe …) die Gänge in der festen Reihenfolge vom Eingang
+     * zur Kasse (Grill Einkauf 2.11.), bei anderen Läden (dm, Bäcker) einfach die Sachen. Abgehaktes am Ende.
+     */
+    private fun einkaufGliedern(sachen: List<Sache>, zeile: (Sache) -> View): List<View> {
+        val zeilen = mutableListOf<View>()
+        val offen = sachen.filter { !it.abgehakt }
+        val laeden = offen.map { ladenName(it) }.distinct()
+        val mitLaeden = laeden.size > 1 || laeden.singleOrNull()?.let { it != "Supermarkt" } == true
+        val mitGaengen = offen.map { ladenName(it) to abteilungName(it) }.distinct().size > 1
+        var letzterLaden: String? = null
+        var letzterGang: String? = null
+        for (s in offen) {
+            val laden = ladenName(s)
+            if (mitLaeden && laden != letzterLaden) {
+                zeilen += ladenKopf(laden, erster = zeilen.isEmpty())
+                letzterLaden = laden
+                letzterGang = null
+            }
+            val gang = if (mitGaengen && hatGaenge(laden)) abteilungName(s) else null
+            if (gang != null && gang != letzterGang) {
+                zeilen += ueberschrift(gang)
+                letzterGang = gang
+            }
+            val z = zeile(s)
+            listOfNotNull(if (mitLaeden) laden else null, gang).joinToString(" · ").takeIf { it.isNotBlank() }
+                ?.let { zeilenKontext[z] = it }
+            zeilen += z
+        }
+        val korb = sachen.filter { it.abgehakt }
+        if (korb.isNotEmpty() && offen.isNotEmpty()) zeilen += ueberschrift("Im Korb")
+        korb.forEach { s -> zeilen += zeile(s).also { if (offen.isNotEmpty()) zeilenKontext[it] = "Im Korb" } }
+        return zeilen
+    }
+
+    /** Laden als Überschrift: Name fett, darunter der kurze Strich wie im Tagebuch. */
+    private fun ladenKopf(laden: String, erster: Boolean): View = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(0, if (erster) dp(2) else dp(20), 0, dp(2))
+        tag = UEBERSCHRIFT
+        addView(text(laden, 21f, dick = true))
+        addView(View(this@LiteActivity).apply { setBackgroundColor(Color.BLACK) },
+            LinearLayout.LayoutParams(dp(28), dp(3)).apply { topMargin = dp(6) })
     }
 
     private fun einkaufSeite(alle: List<Eintrag>) {
         val sachen = Daten.einkauf(this, alle)
-        val zeilen = mutableListOf<View>()
-        var letzteGruppe: String? = null
-        val mitUeberschriften = sachen.map { gruppeVon(it) }.distinct().size > 1 // eine einzige Gruppe braucht keine
-        for (s in sachen) {
-            val gruppe = gruppeVon(s)
-            if (mitUeberschriften && gruppe != letzteGruppe) {
-                zeilen += ueberschrift(gruppe)
-                letzteGruppe = gruppe
-            }
-            zeilen += hakenZeile(s.sache, s.details.ifBlank { null }, s.abgehakt) {
+        val zeilen = einkaufGliedern(sachen) { s ->
+            hakenZeile(s.sache, s.details.ifBlank { null }, s.abgehakt) {
                 Daten.sacheUmschalten(this, s)
                 zeichnen()
             }
-        }
+        }.toMutableList()
         if (sachen.any { it.abgehakt }) {
             zeilen += leiseZeile("Abgehakte entfernen", R.drawable.pfeil_rechts, einzug = 0) {
                 Daten.abgehakteWeg(this@LiteActivity, sachen)
@@ -816,16 +864,8 @@ class LiteActivity : Activity() {
      */
     private fun ladenSeite(alle: List<Eintrag>) {
         val offen = Daten.einkauf(this, alle).filter { !it.abgehakt }
-        val zeilen = mutableListOf<View>()
-        var letzteGruppe: String? = null
-        val mitUeberschriften = offen.map { gruppeVon(it) }.distinct().size > 1
-        for (s in offen) {
-            val gruppe = gruppeVon(s)
-            if (mitUeberschriften && gruppe != letzteGruppe) {
-                zeilen += ueberschrift(gruppe)
-                letzteGruppe = gruppe
-            }
-            zeilen += LinearLayout(this).apply {
+        val zeilen = einkaufGliedern(offen) { s ->
+            LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(LinearLayout(this@LiteActivity).apply {
                     gravity = Gravity.CENTER_VERTICAL
@@ -857,13 +897,23 @@ class LiteActivity : Activity() {
         rahmen(kopf("Im Laden", zurueckPfeil = true), unten = rueck, inhalt = liste(zeilen, "Alles im Korb."))
     }
 
-    /** Alles Offene als ruhiger Text, nach Laden und Gang, über das Teilen-Fenster (z. B. WhatsApp an Anna). */
+    /**
+     * Alles Offene als ruhiger Text über das Teilen-Fenster (z. B. WhatsApp an Anna): je Laden ein Block, bei
+     * Supermärkten eine Zeile pro Gang („Kühlregal: Milch, Butter“).
+     */
     private fun teilen(offen: List<Sache>) {
         val text = buildString {
             append("Einkauf (").append(SimpleDateFormat("EE d.M.", Locale.GERMANY).format(Date())).append(")\n")
-            for ((gruppe, sachen) in offen.groupBy { gruppeVon(it) }) {
-                append("\n").append(gruppe).append("\n")
-                sachen.forEach { s -> append("– ").append(s.sache).append(if (s.details.isNotBlank()) " (${s.details})" else "").append("\n") }
+            val nachLaden = offen.groupBy { ladenName(it) }
+            for ((laden, sachen) in nachLaden) {
+                append("\n")
+                if (nachLaden.size > 1 || laden != "Supermarkt") append(laden.uppercase(Locale.GERMANY)).append("\n")
+                fun name(s: Sache) = s.sache + if (s.details.isNotBlank()) " (${s.details})" else ""
+                if (hatGaenge(laden)) {
+                    for ((gang, imGang) in sachen.groupBy { abteilungName(it) }) {
+                        append(gang).append(": ").append(imGang.joinToString(", ") { name(it) }).append("\n")
+                    }
+                } else append(sachen.joinToString(", ") { name(it) }).append("\n")
             }
         }.trimEnd()
         try {

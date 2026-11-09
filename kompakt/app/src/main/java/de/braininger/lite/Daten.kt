@@ -108,6 +108,24 @@ object Daten {
         "Obst & Gemüse", "Brot", "Kühlregal", "Fleisch & Fisch", "Vorrat", "Süßes & Knabbern",
         "Getränke", "Tiefkühl", "Drogerie & Haushalt", "Sonstiges",
     )
+    // Supermärkte (auch Discounter): darin wird nach Gängen sortiert. Andere Läden (dm, Bäcker, Baumarkt) nicht.
+    private val SUPERMAERKTE = listOf(
+        "supermarkt", "discounter", "aldi", "lidl", "rewe", "edeka", "penny", "netto", "kaufland", "norma", "globus",
+        "tegut", "real", "marktkauf", "nahkauf", "famila", "combi", "hit", "denns", "alnatura", "bio",
+    )
+
+    fun istSupermarkt(laden: String): Boolean {
+        // Wortweise: „Rewe City“, „Biomarkt“, „Aldi Süd“ zählen, „Bäckerei Schmidt“ nicht
+        return laden.lowercase(Locale.GERMANY).split(" ", "-", "/").any { w -> SUPERMAERKTE.any { w == it || w.startsWith(it) } }
+    }
+
+    /** 0 = „Supermarkt“ ohne Namen, 1 = genannter Supermarkt (Aldi, Rewe …), 2 = anderer Laden. */
+    fun ladenRang(laden: String): Int = when {
+        laden == "Supermarkt" -> 0
+        istSupermarkt(laden) -> 1
+        else -> 2
+    }
+
     // so heißen die Abteilungen in ergebnis.json (laptop/braininger/auswertung.py ABTEILUNGEN), gleiche Reihenfolge
     private val KENNUNGEN = listOf(
         "obst_gemuese", "brot", "kuehlregal", "fleisch_fisch", "vorrat", "suesses", "getraenke", "tiefkuehl",
@@ -188,7 +206,7 @@ object Daten {
             }
         }
         // erst der Supermarkt (nach Gang), dann die anderen Läden nach Namen, Abgehaktes ans Ende
-        return liste.sortedWith(compareBy<Sache>({ it.abgehakt }, { it.laden != "Supermarkt" }, { it.laden.lowercase() }, { it.abteilung }))
+        return liste.sortedWith(compareBy<Sache>({ it.abgehakt }, { ladenRang(it.laden) }, { it.laden.lowercase() }, { it.abteilung }))
     }
 
     fun sacheUmschalten(c: Context, s: Sache) {
