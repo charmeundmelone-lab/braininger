@@ -69,7 +69,12 @@ class Eintrag(val ordner: File, val info: JSONObject, val roh: JSONObject?) {
             roh == null -> "beim Laptop"
             roh.optString("status") == "fertig" -> null
             roh.optString("status") == "fehler" -> "Fehler beim Laptop"
-            roh.optString("status") == "wartet" -> "Laptop wartet"
+            // meist ist das Claude-Abo gerade ausgeschöpft; der Laptop versucht es selbst wieder (weiter_ab)
+            roh.optString("status") == "wartet" -> {
+                val ab = roh.optString("weiter_ab").takeIf { it.length >= 16 }?.substring(11, 16)
+                if (roh.optString("meldung").contains("Claude")) "wartet auf Claude" + (ab?.let { ", weiter ab $it" } ?: "")
+                else "Laptop wartet" + (ab?.let { ", weiter ab $it" } ?: "")
+            }
             else -> "Laptop arbeitet"
         }
 
