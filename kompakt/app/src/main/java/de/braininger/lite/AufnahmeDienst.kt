@@ -102,6 +102,7 @@ class AufnahmeDienst : Service() {
         }
     }
 
+    private val MAX_AUFNAHME_MS = 4 * 60 * 60 * 1000L
     private var recorder: StueckRecorder? = null
     private var ordner: File? = null
     private var info: JSONObject? = null
@@ -185,7 +186,7 @@ class AufnahmeDienst : Service() {
     private val gehalten = Runnable {
         ausgeloest = true
         Lager.protokoll(this, "Lauter-Taste gehalten")
-        umschalten()
+        tasteStoppt()
     }
 
     private fun tasteEinrichten() {
@@ -209,7 +210,9 @@ class AufnahmeDienst : Service() {
     /** Sitzung nur, wenn nichts anderes Ton abspielt und kein Anruf läuft: dann gehören die Tasten wieder den anderen. */
     private fun sitzungAnpassen() {
         val s = sitzung ?: return
-        val scharf = !audio.isMusicActive && audio.mode == AudioManager.MODE_NORMAL
+        // Nur während einer Aufnahme (Halten = Stopp, kurz = Markierung). Sonst gehören Lauter/Leiser dem System:
+        // Aufnahmen starten nie per Lautstärketaste (am 9.11. startete so versehentlich eine 17-Stunden-Aufnahme).
+        val scharf = laeuft && !audio.isMusicActive && audio.mode == AudioManager.MODE_NORMAL
         if (s.isActive != scharf) s.isActive = scharf
     }
 
@@ -251,6 +254,11 @@ class AufnahmeDienst : Service() {
 
     private fun umschalten() {
         if (laeuft) beenden(taste = true) else beginnen(taste = true)
+    }
+
+    /** Die Lautstärketaste darf nur stoppen, nie starten (Sicherung, falls die Sitzung doch einmal Tasten bekommt). */
+    private fun tasteStoppt() {
+        if (laeuft) beenden(taste = true) else Lager.protokoll(this, "Lauter gehalten ohne Aufnahme: ignoriert")
     }
 
     /**
@@ -323,6 +331,7 @@ class AufnahmeDienst : Service() {
         // erst Vordergrund (mit Aufnahme-Hinweis), damit Android das Mikrofon freigibt, bevor der erste Ton kommt
         laeuft = true
         seit = start.time
+        haupt.post { sitzungAnpassen() }
         vordergrund()
         sperre = getSystemService(PowerManager::class.java)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "braininger:aufnahme").apply { acquire(4 * 60 * 60 * 1000L) }
@@ -347,6 +356,30 @@ class AufnahmeDienst : Service() {
         Lager.protokoll(this, "Offline+: " + (Offline.an(this)?.let { if (it) "an" else "aus" } ?: "nicht lesbar"))
         haupt.removeCallbacks(stummWache)
         haupt.postDelayed(stummWache, 1000)
+        haupt.removeCallbacks(grenzWache)
+        haupt.postDelayed(grenzWache, MAX_AUFNAHME_MS)
+    }
+
+    /**
+     * Sicherung gegen vergessene Aufnahmen: nach 4 Stunden (so lange hält auch die Wachsperre) endet die Aufnahme von
+     * selbst. Eine liegengebliebene Aufnahme lief am 9./10.11. rund 17 Stunden und war der größte Akkuverbraucher.
+     * Das Ende ist wie ein normaler Stopp (alles bleibt erhalten), dazu Doppel-Summen und eine Mitteilung.
+     */
+    private val grenzWache = Runnable {
+        if (!laeuft) return@Runnable
+        Lager.protokoll(this, "Aufnahme erreicht die Höchstdauer von 4 Stunden und wird beendet")
+        synchronized(this) {
+            info?.getJSONArray("hinweise")?.put("Aufnahme nach 4 Stunden automatisch beendet (Höchstdauer).")
+        }
+        val nm = getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(NotificationChannel("warnung", "Warnungen", NotificationManager.IMPORTANCE_HIGH))
+        nm.notify(4, Notification.Builder(this, "warnung")
+            .setSmallIcon(R.drawable.symbol)
+            .setContentTitle("Aufnahme beendet")
+            .setContentText("Nach 4 Stunden automatisch gestoppt. Alles bleibt gespeichert.")
+            .setAutoCancel(true)
+            .build())
+        beenden(true)
     }
 
     /**
@@ -399,6 +432,7 @@ class AufnahmeDienst : Service() {
         val r = recorder ?: return
         recorder = null
         haupt.removeCallbacks(stummWache)
+        haupt.removeCallbacks(grenzWache)
         if (taste) Summer.stopp(this)
         Thread {
             r.stopp() // schließt das letzte Stück ab (ruft beiStueckFertig)
@@ -417,7 +451,7 @@ class AufnahmeDienst : Service() {
             try { sperre?.release() } catch (_: Exception) {}
             getSystemService(NotificationManager::class.java).cancel(3)
             Lager.protokoll(this, "Aufnahme beendet ${ordner?.name}, ${(ende.time - start.time) / 1000} s")
-            haupt.post { vordergrund() } // zurück auf „bereit“
+            haupt.post { sitzungAnpassen(); vordergrund() } // Tasten zurück ans System, Anzeige zurück auf „bereit“
             melden()
             AbgleichJob.jetzt(this)
         }.start()
